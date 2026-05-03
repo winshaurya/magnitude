@@ -9,6 +9,33 @@ import {
   useRef,
   useState,
 } from 'react'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+
+const HISTORY_FILE = path.join(os.homedir(), '.magnitude_history')
+const HISTORY_MAX = 500
+
+function loadHistory(): string[] {
+  try {
+    const raw = fs.readFileSync(HISTORY_FILE, 'utf8')
+    return raw
+      .split('\n')
+      .map(l => l.trim())
+      .filter(Boolean)
+      .slice(-HISTORY_MAX)
+  } catch {
+    return []
+  }
+}
+
+function appendHistory(entry: string): void {
+  if (!entry.trim()) return
+  try {
+    fs.appendFileSync(HISTORY_FILE, entry.replace(/\n/g, ' ') + '\n', 'utf8')
+  } catch {
+  }
+}
 
 import {
   CONTROL_CHAR_REGEX,
@@ -51,8 +78,8 @@ import type {
 
 type KeyWithPreventDefault =
   | {
-      preventDefault?: () => void
-    }
+    preventDefault?: () => void
+  }
   | null
   | undefined
 
@@ -406,6 +433,10 @@ export const MultilineInput = forwardRef<
   // Kill-ring for readline-style kill/yank (Ctrl+U, Ctrl+K, Ctrl+W, Ctrl+D → Ctrl+Y)
   const killRingRef = useRef<string>('')
 
+  const historyRef = useRef<string[]>([])
+  const historyIndexRef = useRef<number>(-1)
+  const savedDraftRef = useRef<string>('')
+
   // Keep refs current on every render (synchronous assignment avoids useEffect timing issues)
   valueRef.current = value
   cursorPositionRef.current = cursorPosition
@@ -441,6 +472,12 @@ export const MultilineInput = forwardRef<
     prevBulkInsertEpochRef.current = bulkInsertEpoch
     setSuppressBottomFollowAutoScroll(true)
   }, [bulkInsertEpoch])
+
+  useEffect(() => {
+    const history = loadHistory()
+    historyRef.current = history
+    historyIndexRef.current = history.length
+  }, [])
 
   const textRef = useRef<TextRenderable | null>(null)
 
@@ -502,17 +539,17 @@ export const MultilineInput = forwardRef<
 
     const scrollMetrics = focused
       ? safeRenderableAccess(
-          scrollBoxRef.current,
-          (scrollBox) => ({
-            current: scrollBox.verticalScrollBar.scrollPosition,
-            viewportHeight: scrollBox.viewport.height,
-            scrollHeight: scrollBox.scrollHeight,
-          }),
-          {
-            mountedRef,
-            fallback: null,
-          },
-        )
+        scrollBoxRef.current,
+        (scrollBox) => ({
+          current: scrollBox.verticalScrollBar.scrollPosition,
+          viewportHeight: scrollBox.viewport.height,
+          scrollHeight: scrollBox.scrollHeight,
+        }),
+        {
+          mountedRef,
+          fallback: null,
+        },
+      )
       : null
 
     if (!scrollMetrics) return
@@ -1024,6 +1061,12 @@ export const MultilineInput = forwardRef<
 
       if (isPlainEnter) {
         suppressKeyDefault(key)
+        if (value.trim()) {
+          appendHistory(value)
+          historyRef.current.push(value)
+          historyIndexRef.current = historyRef.current.length
+          savedDraftRef.current = ''
+        }
         onSubmit()
         return true
       }
@@ -1785,6 +1828,57 @@ export const MultilineInput = forwardRef<
         return true
       }
 
+      // Up arrow
+      if (key.name === 'up' && !key.ctrl && !key.meta && !key.option) {
+        const history = historyRef.current
+        const currentIndex = historyIndexRef.current
+        const isOnFirstVisualLine = visualLineIndex === 0
+
+        if (isOnFirstVisualLine && currentIndex > 0) {
+          suppressKeyDefault(key)
+
+          if (currentIndex === history.length) {
+            savedDraftRef.current = value
+          }
+
+          const newIndex = currentIndex - 1
+          const newText = history[newIndex]
+          historyIndexRef.current = newIndex
+
+          commitInput({
+            text: newText,
+            cursorPosition: newText.length,
+            lastEditDueToNav: false,
+          })
+          return true
+        }
+      }
+
+      // Down arrow
+      if (key.name === 'down' && !key.ctrl && !key.meta && !key.option) {
+        const history = historyRef.current
+        const currentIndex = historyIndexRef.current
+        const isOnLastVisualLine = visualLineIndex === lineStarts.length - 1
+
+        if (isOnLastVisualLine && currentIndex < history.length) {
+          suppressKeyDefault(key)
+
+          const newIndex = currentIndex + 1
+          historyIndexRef.current = newIndex
+
+          const newText = newIndex === history.length
+            ? savedDraftRef.current
+            : history[newIndex]
+
+          commitInput({
+            text: newText,
+            cursorPosition: newText.length,
+            lastEditDueToNav: false,
+          })
+          return true
+        }
+      }
+
       // Up arrow (no modifiers)
       if (key.name === 'up' && !key.ctrl && !key.meta && !key.option) {
         suppressKeyDefault(key)
@@ -1871,6 +1965,10 @@ export const MultilineInput = forwardRef<
         isLikelyPrintableKey(key)
       ) {
         suppressKeyDefault(key)
+        if (historyIndexRef.current !== historyRef.current.length) {
+          historyIndexRef.current = historyRef.current.length
+          savedDraftRef.current = ''
+        }
         insertAtCaret(key.sequence)
         return true
       }
@@ -2066,9 +2164,9 @@ export const MultilineInput = forwardRef<
                 if (!showRenderableCursor || cursorRendered) return
                 const cursorColor = terminalSupportsRgb24() ? (highlightColor ?? theme.info) : 'cyan'
                 const isBlockCursor =
-        activeChar !== undefined &&
-        activeChar !== ' ' &&
-        activeChar !== '\t'
+                  activeChar !== undefined &&
+                  activeChar !== ' ' &&
+                  activeChar !== '\t'
                 out.push(
                   <InputCursor
                     key={`cursor-${cursorPosition}-${lastActivity}-${cursorRenderCount++}`}
