@@ -16,6 +16,7 @@ import { LoadPreviousButton } from './components/chat-controls'
 
 import { usePaginatedTimeline } from './hooks/use-paginated-timeline'
 import { useCollapsedBlocks } from './hooks/use-collapsed-blocks'
+import { useTokenCounter } from './hooks/use-token-counter'
 
 import { useTheme } from './hooks/use-theme'
 import { SelectedFileProvider } from './hooks/use-file-viewer'
@@ -142,6 +143,7 @@ function AppInner({
   const storage = useStorage()
   const auth = useMagnitudeAuth()
   const { client, workspacePath, send: clientSend, ensureReady: ensureClientReady, setFactory: setClientFactory, setClient: setLazyClient } = useLazyClient()
+  const tokenCounts = useTokenCounter(client)
 
   const [display, setDisplay] = useState<DisplayState | null>(null)
   const [toolState, setToolState] = useState<ToolStateProjectionState | null>(null)
@@ -1271,6 +1273,7 @@ function AppInner({
               composerCanFocus,
               widgetNavActive,
               isSubagentView: selectedForkId !== null,
+              tokenCounts,
               supportsVision: activeModelSupportsVision,
             }}
             services={{

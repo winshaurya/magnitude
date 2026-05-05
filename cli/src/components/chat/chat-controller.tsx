@@ -12,6 +12,7 @@ import { SlashCommandMenu } from '../slash-command-menu'
 import { MultilineInput, type MultilineInputHandle } from '../multiline-input'
 import { AttachmentsBar } from '../attachments-bar'
 import { ContextUsageBar } from '../context-usage-bar'
+import { TokenBar } from '../token-bar'
 import { useFileMentions } from '../../hooks/use-file-mentions'
 import { useSlashCommands } from '../../hooks/use-slash-commands'
 import { readClipboardBitmap, readClipboardText } from '../../utils/clipboard'
@@ -626,6 +627,10 @@ export function ChatController(props: ChatControllerProps) {
           ) : env.bashMode ? (
             <text style={{ fg: env.theme.muted }}><span attributes={TextAttributes.BOLD}>Esc</span> to exit Bash mode</text>
           ) : null)}
+          <TokenBar
+            counts={env.tokenCounts}
+            visible={env.status !== 'idle'}
+          />
           <ContextUsageBar
             tokenUsage={env.tokenUsage}
             hardCap={env.contextHardCap}

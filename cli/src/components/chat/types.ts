@@ -21,6 +21,7 @@ export type ChatControllerEnv = {
   composerCanFocus: boolean
   widgetNavActive: boolean
   isSubagentView: boolean
+  tokenCounts: import('../../hooks/use-token-counter').TokenCounts
   supportsVision: boolean
 }
 
