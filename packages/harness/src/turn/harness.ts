@@ -1,11 +1,13 @@
 import { Effect, Stream, Layer, Ref, Queue } from "effect"
 import type * as HttpClient from "@effect/platform/HttpClient"
-import type {
+import {
   BoundModel,
   ConnectionError,
   StreamError,
   ToolDefinition,
   Prompt,
+  createToolCallId,
+  type ToolCallId,
 } from "@magnitudedev/ai"
 import type { TurnOutcome } from "../events"
 import type { HarnessEvent } from "../events"
@@ -14,15 +16,15 @@ import type { Toolkit, ToolkitRequirements } from "../tool/toolkit"
 import type { HarnessToolErased } from "../tool/tool"
 import { dispatch } from "./dispatcher"
 import {
-  CanonicalAccumulatorReducer,
-  projectCanonical,
-  EngineStateReducer,
-  createToolHandleReducer,
-  type CanonicalTurnState,
-  type CanonicalAccumulator,
+  createTurnReducer,
+  type TurnState,
   type EngineState,
-  type ToolHandleState,
 } from "./reducers"
+
+// ── Sentinel for end-of-stream ───────────────────────────────────────
+
+const END = Symbol('END')
+type QueueItem = HarnessEvent | typeof END
 
 // ── Config ───────────────────────────────────────────────────────────
 
@@ -62,30 +64,24 @@ export interface Harness<TInitialError = ConnectionError> {
 
 /** A turn driven by the harness — events flow from the model stream
  *  through the dispatch pipeline. Consume `events` to observe progress;
- *  refs are updated automatically before each event is emitted. */
+ *  the state ref is updated automatically before each event is emitted. */
 export interface LiveTurn {
   /** Stream of harness events, ending with TurnEnd. */
   readonly events: Stream.Stream<HarnessEvent>
-  /** Canonical assistant message + tool results, updated after each event. */
-  readonly canonicalTurn: Ref.Ref<CanonicalTurnState>
-  /** Engine bookkeeping — tool call map, outcomes, stopped flag. */
-  readonly engineState: Ref.Ref<EngineState>
-  /** Per-tool-call state machines, driven by the toolkit's state models. */
-  readonly toolHandles: Ref.Ref<ToolHandleState>
+  /** Unified turn state — canonical message, engine bookkeeping, tool handles.
+   *  Updated after each event. Access sub-state via `.canonical`, `.engine`, `.handles`. */
+  readonly state: Ref.Ref<TurnState>
 }
 
 /** A turn driven by the consumer — call `feed` with recorded events
- *  to reconstruct state without running the model. Same reducers,
- *  same refs, same final state as a LiveTurn that saw the same events. */
+ *  to reconstruct state without running the model. Same reducer,
+ *  same ref, same final state as a LiveTurn that saw the same events. */
 export interface ReplayTurn {
-  /** Feed a single event through all reducers and hooks. */
+  /** Feed a single event through the unified reducer and hooks. */
   readonly feed: (event: HarnessEvent) => Effect.Effect<void>
-  /** Canonical assistant message + tool results, updated after each feed. */
-  readonly canonicalTurn: Ref.Ref<CanonicalTurnState>
-  /** Engine bookkeeping — tool call map, outcomes, stopped flag. */
-  readonly engineState: Ref.Ref<EngineState>
-  /** Per-tool-call state machines, driven by the toolkit's state models. */
-  readonly toolHandles: Ref.Ref<ToolHandleState>
+  /** Unified turn state — canonical message, engine bookkeeping, tool handles.
+   *  Updated after each feed. Access sub-state via `.canonical`, `.engine`, `.handles`. */
+  readonly state: Ref.Ref<TurnState>
 }
 
 // ── createHarness ────────────────────────────────────────────────────
@@ -106,36 +102,27 @@ export function createHarness<
     toolDefs.push(tool.definition)
   }
 
-  const toolHandleReducer = createToolHandleReducer(toolkit)
+  const turnReducer = createTurnReducer(toolkit)
 
   // ── Shared ref creation ──────────────────────────────────────────
 
-  function makeRefs() {
-    return Effect.all({
-      accRef: Ref.make(CanonicalAccumulatorReducer.initial),
-      canonical: Ref.make(projectCanonical(CanonicalAccumulatorReducer.initial)),
-      engine: Ref.make(config.initialState ?? EngineStateReducer.initial),
-      handles: Ref.make(toolHandleReducer.initial),
-    })
+  function makeStateRef(initialOverride?: { engine?: EngineState }) {
+    const initial = initialOverride?.engine
+      ? { ...turnReducer.initial, engine: initialOverride.engine }
+      : turnReducer.initial
+    return Ref.make(initial)
   }
 
-  type Refs = Effect.Effect.Success<ReturnType<typeof makeRefs>>
-
-  // ── Shared event feeding (reducers + optional hooks + optional queue) ──
+  // ── Shared event feeding (reducer + optional hooks + optional queue) ──
 
   function makeFeedEvent(
-    refs: Refs,
-    eventQueue?: Queue.Queue<HarnessEvent>,
+    stateRef: Ref.Ref<TurnState>,
+    eventQueue?: Queue.Queue<QueueItem>,
   ): (event: HarnessEvent) => Effect.Effect<void> {
     return (event: HarnessEvent): Effect.Effect<void> =>
       Effect.gen(function* () {
-        // Step 1: Update all reducers
-        const newAcc = yield* Ref.updateAndGet(refs.accRef, (s) =>
-          CanonicalAccumulatorReducer.step(s, event),
-        )
-        yield* Ref.set(refs.canonical, projectCanonical(newAcc))
-        yield* Ref.update(refs.engine, (s) => EngineStateReducer.step(s, event))
-        yield* Ref.update(refs.handles, (s) => toolHandleReducer.step(s, event))
+        // Step 1: Update unified reducer
+        yield* Ref.update(stateRef, (s) => turnReducer.step(s, event))
 
         // Step 2: onEvent hook — erased boundary, type coverage enforced by createHarness.
         if (hooks?.onEvent) {
@@ -158,14 +145,9 @@ export function createHarness<
 
   function createReplayTurn(): Effect.Effect<ReplayTurn> {
     return Effect.gen(function* () {
-      const refs = yield* makeRefs()
-      const feed = makeFeedEvent(refs)
-      return {
-        feed,
-        canonicalTurn: refs.canonical,
-        engineState: refs.engine,
-        toolHandles: refs.handles,
-      }
+      const stateRef = yield* makeStateRef()
+      const feed = makeFeedEvent(stateRef)
+      return { feed, state: stateRef }
     })
   }
 
@@ -179,12 +161,26 @@ export function createHarness<
     HttpClient.HttpClient
   > {
     return Effect.gen(function* () {
-      // Get the model stream + parsers (may fail with ConnectionError)
-      const { events: modelEvents, parsers } = yield* model.stream(prompt, toolDefs)
+      // Build replay-aware tool call ID generator from initial engine state.
+      // Yields prior IDs in order (so cachedOutcomes lookups succeed on retry),
+      // then falls back to fresh cuid2 IDs for any new tool calls.
+      const priorIds = [...(config.initialState?.toolCallMap.keys() ?? [])]
+      const generateToolCallId = (() => {
+        let ordinal = 0
+        return (): ToolCallId => {
+          if (ordinal < priorIds.length) return priorIds[ordinal++] as ToolCallId
+          return createToolCallId()
+        }
+      })()
 
-      const refs = yield* makeRefs()
-      const eventQueue = yield* Queue.unbounded<HarnessEvent>()
-      const emitEvent = makeFeedEvent(refs, eventQueue)
+      // Get the model stream + parsers (may fail with ConnectionError)
+      const { events: modelEvents, parsers } = yield* model.stream(prompt, toolDefs, { generateToolCallId })
+
+      const stateRef = yield* makeStateRef(
+        config.initialState ? { engine: config.initialState } : undefined,
+      )
+      const eventQueue = yield* Queue.unbounded<QueueItem>()
+      const emitEvent = makeFeedEvent(stateRef, eventQueue)
 
       // Build dispatch — delegates all event processing and tool execution
       const processing = dispatch({
@@ -198,23 +194,24 @@ export function createHarness<
         mapStreamError: config.mapStreamError as (error: unknown) => TurnOutcome,
       })
 
-      // Fork the dispatch processing and ensure queue shutdown on completion
+      // Fork the dispatch processing; enqueue END sentinel on completion.
+      // Queue.shutdown is intentionally omitted — Stream.fromQueue +
+      // takeWhile(END) handles termination.  Shutdown would race with
+      // the consumer and discard buffered items.
       yield* Effect.fork(
         processing.pipe(
-          Effect.ensuring(Queue.shutdown(eventQueue)),
+          Effect.ensuring(Queue.offer(eventQueue, END)),
         ),
       )
 
-      // Build event stream from queue, ending at TurnEnd
+      // Build event stream from queue, ending at END sentinel
       const eventStream: Stream.Stream<HarnessEvent> = Stream.fromQueue(eventQueue).pipe(
-        Stream.takeUntil((event) => event._tag === "TurnEnd"),
+        Stream.takeWhile((item): item is HarnessEvent => item !== END),
       )
 
       return {
         events: eventStream,
-        canonicalTurn: refs.canonical,
-        engineState: refs.engine,
-        toolHandles: refs.handles,
+        state: stateRef,
       }
     })
   }

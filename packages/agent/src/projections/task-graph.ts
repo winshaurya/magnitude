@@ -1,9 +1,8 @@
 import { Projection, Signal } from '@magnitudedev/event-core'
 import type { AppEvent } from '../events'
-import { AgentStatusProjection, type AgentStatusState } from './agent-status'
 import { type TaskAssignee } from '../tasks/types'
 
-export type TaskStatus = 'pending' | 'working' | 'completed'
+export type TaskStatus = 'pending' | 'completed'
 
 export interface TaskWorkerInfo {
   readonly agentId: string
@@ -196,18 +195,6 @@ export function reparentTask(
   }))
 }
 
-function deriveStatusFromWorker(task: TaskRecord, agentState: AgentStatusState): TaskStatus {
-  if (task.completedAt !== null) return 'completed'
-  if (!task.worker) return 'pending'
-
-  const linkedAgentId = agentState.agentByForkId.get(task.worker.forkId)
-  if (!linkedAgentId) return 'pending'
-  const agent = agentState.agents.get(linkedAgentId)
-  if (!agent) return 'pending'
-
-  return agent.status === 'working' ? 'working' : 'pending'
-}
-
 function findTaskByWorkerAgentId(state: TaskGraphState, agentId: string): TaskRecord | undefined {
   for (const task of state.tasks.values()) {
     if (task.worker?.agentId === agentId) return task
@@ -215,18 +202,16 @@ function findTaskByWorkerAgentId(state: TaskGraphState, agentId: string): TaskRe
   return undefined
 }
 
-function isTaskStatus(value: string): value is TaskStatus {
-  return value === 'pending' || value === 'working' || value === 'completed'
+export function isTaskStatus(value: string): value is TaskStatus {
+  return value === 'pending' || value === 'completed'
 }
 
-function canTransition(current: TaskStatus, requested: TaskStatus): boolean {
+export function canTransition(current: TaskStatus, requested: TaskStatus): boolean {
   if (current === requested) return false
 
   switch (current) {
     case 'pending':
-      return requested === 'working' || requested === 'completed'
-    case 'working':
-      return requested === 'pending' || requested === 'completed'
+      return requested === 'completed'
     case 'completed':
       return requested === 'pending'
   }
@@ -240,7 +225,7 @@ export const TaskGraphProjection = Projection.define<AppEvent, TaskGraphState>()
     rootTaskIds: [],
   },
 
-  reads: [AgentStatusProjection],
+  reads: [],
 
   signals: {
     taskCreated: Signal.create<TaskCreatedSignal>('TaskGraph/taskCreated'),
@@ -397,33 +382,16 @@ export const TaskGraphProjection = Projection.define<AppEvent, TaskGraphState>()
 
             return nextState
           }
-          case 'working': {
-            nextState = patchTask(nextState, event.taskId, (task) => ({
-              ...task,
-              status: 'working',
-              completedAt: null,
-              updatedAt: event.timestamp,
-            }))
 
-            emit.taskStatusChanged({
-              taskId: event.taskId,
-              previous: previousStatus,
-              next: 'working',
-              timestamp: event.timestamp,
-            })
-
-            return nextState
-          }
         }
       }
 
       return nextState
     },
 
-    task_assigned: ({ event, state, read, emit }) => {
+    task_assigned: ({ event, state, emit }) => {
       const current = getTask(state, event.taskId)
 
-      const agentState = read(AgentStatusProjection)
       const worker: TaskWorkerInfo | null = event.workerInfo
         ? {
             agentId: event.workerInfo.agentId,
@@ -433,29 +401,46 @@ export const TaskGraphProjection = Projection.define<AppEvent, TaskGraphState>()
           }
         : null
 
-      const nextStatus = worker
-        ? deriveStatusFromWorker({ ...current, worker, completedAt: null }, agentState)
-        : 'pending'
-
       const next = patchTask(state, event.taskId, (task) => ({
         ...task,
         assignee: event.assignee,
         worker,
-        status: nextStatus,
-        completedAt: null,
         updatedAt: event.timestamp,
       }))
 
-      if (current.status !== nextStatus) {
-        emit.taskStatusChanged({
-          taskId: event.taskId,
-          previous: current.status,
-          next: nextStatus,
-          timestamp: event.timestamp,
-        })
-      }
-
       return next
+    },
+
+    agent_task_changed: ({ event, state, emit }) => {
+      const oldTask = state.tasks.get(event.oldTaskId)
+      const newTask = state.tasks.get(event.newTaskId)
+      if (!oldTask || !newTask) return state
+
+      const workerInfo = oldTask.worker
+      if (!workerInfo || workerInfo.agentId !== event.agentId) return state
+
+      // Remove worker from old task
+      let nextState = patchTask(state, event.oldTaskId, (task) => ({
+        ...task,
+        worker: null,
+        updatedAt: event.timestamp,
+      }))
+
+      // Assign worker to new task
+      const newWorker: TaskWorkerInfo = {
+        agentId: workerInfo.agentId,
+        forkId: workerInfo.forkId,
+        role: workerInfo.role,
+        message: workerInfo.message,
+      }
+      nextState = patchTask(nextState, event.newTaskId, (task) => ({
+        ...task,
+        worker: newWorker,
+        assignee: 'worker' as const,
+        updatedAt: event.timestamp,
+      }))
+
+      return nextState
     },
 
     task_cancelled: ({ event, state, emit }) => {
@@ -506,55 +491,5 @@ export const TaskGraphProjection = Projection.define<AppEvent, TaskGraphState>()
     },
   },
 
-  signalHandlers: (on) => [
-    on(AgentStatusProjection.signals.agentBecameWorking, ({ value, state, read, emit }) => {
-      const task = findTaskByWorkerAgentId(state, value.agentId)
-      if (!task || task.status === 'completed') return state
-
-      const agentState = read(AgentStatusProjection)
-      const nextStatus = deriveStatusFromWorker(task, agentState)
-
-      if (nextStatus === task.status) return state
-
-      const next = patchTask(state, task.id, (record) => ({
-        ...record,
-        status: nextStatus,
-        updatedAt: value.timestamp,
-      }))
-
-      emit.taskStatusChanged({
-        taskId: task.id,
-        previous: task.status,
-        next: nextStatus,
-        timestamp: value.timestamp,
-      })
-
-      return next
-    }),
-
-    on(AgentStatusProjection.signals.agentBecameIdle, ({ value, state, read, emit }) => {
-      const task = findTaskByWorkerAgentId(state, value.agentId)
-      if (!task || task.status === 'completed') return state
-
-      const agentState = read(AgentStatusProjection)
-      const nextStatus = deriveStatusFromWorker(task, agentState)
-
-      if (nextStatus === task.status) return state
-
-      const next = patchTask(state, task.id, (record) => ({
-        ...record,
-        status: nextStatus,
-        updatedAt: value.timestamp,
-      }))
-
-      emit.taskStatusChanged({
-        taskId: task.id,
-        previous: task.status,
-        next: nextStatus,
-        timestamp: value.timestamp,
-      })
-
-      return next
-    }),
-  ],
+  signalHandlers: () => [],
 }))

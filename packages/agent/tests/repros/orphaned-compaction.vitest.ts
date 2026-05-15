@@ -8,7 +8,7 @@ import { getCompaction, getTurn, mkContextLimitHit } from '../compaction/helpers
  * Reproduces the orphaned compaction bug found in session mnb0dvn5.
  *
  * In production, compaction_started fired at index 149101, then an interrupt
- * arrived at index 149102. No compaction_ready or compaction_completed ever
+ * arrived at index 149102. No compaction_prepared or compaction_injected ever
  * followed — the compaction cycle was orphaned.
  *
  * Exact sequence from production:
@@ -87,8 +87,7 @@ describe.skip('orphaned compaction after interrupt (mnb0dvn5 reproduction)', () 
       yield* h.wait.event('compaction_started', (e) => e.forkId === null)
 
       // And it should complete successfully
-      const completed = yield* h.wait.event('compaction_completed', (e) => e.forkId === null)
-      expect(completed.summary.length).toBeGreaterThan(0)
+      yield* h.wait.event('compaction_injected', (e) => e.forkId === null)
 
       // Final state should be clean
       const compaction = yield* getCompaction(h)

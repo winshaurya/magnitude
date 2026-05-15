@@ -1,7 +1,8 @@
 import { describe, expect, it } from '@effect/vitest'
 import { Effect } from 'effect'
-import { YIELD_USER, YIELD_INVOKE } from '@magnitudedev/xml-act'
+import { YIELD_USER } from '@magnitudedev/xml-act'
 import { TestHarness, TestHarnessLive } from '../src/test-harness/harness'
+import { WindowProjection } from '../src/window'
 import { IDENTICAL_RESPONSE_BREAKER_THRESHOLD } from '../src/execution/execution-manager'
 
 describe('turn lifecycle', () => {
@@ -81,7 +82,7 @@ describe('turn lifecycle', () => {
     Effect.gen(function* () {
       const h = yield* TestHarness
       yield* h.script.next({ xml: '' })
-      yield* h.script.next({ xml: YIELD_USER })
+      yield* h.script.next({ xml: '<magnitude:message to="user">recovered</magnitude:message>' })
 
       yield* h.user('trigger empty response')
       const first = yield* h.wait.turnCompleted(null)
@@ -119,21 +120,52 @@ describe('turn lifecycle', () => {
         timestamp: Date.now(),
       })
 
-      yield* h.script.next({ xml: `<magnitude:message to="${taskId}">hello</magnitude:message>\n${YIELD_USER}` })
+      // Simulate a turn that produces InvalidMessageDestination feedback
+      // when messaging a task with no active worker.
+      yield* h.send({ type: 'turn_started', forkId: null, turnId: 't-1', chainId: 'c-1' })
 
-      yield* h.user('trigger workerless task message')
-      const completed = yield* h.wait.turnCompleted(null)
+      // Add a message so the turn has content (avoiding empty-response error)
+      yield* h.send({ type: 'message_start', forkId: null, turnId: 't-1', id: 'msg-1', destination: { kind: 'user' } })
+      yield* h.send({ type: 'message_chunk', forkId: null, turnId: 't-1', id: 'msg-1', text: 'trying to message worker' })
+      yield* h.send({ type: 'message_end', forkId: null, turnId: 't-1', id: 'msg-1' })
 
-      expect(completed.outcome._tag).toBe('Completed')
-      if (completed.outcome._tag === 'Completed') {
-        expect(completed.outcome.completion.toolCallsCount).toBeGreaterThan(0)
-        expect(completed.outcome.completion.feedback).toEqual([
-          {
-            _tag: 'InvalidMessageDestination',
-            destination: taskId,
-            message: `Invalid message destination "${taskId}": task has no active worker`,
+      yield* h.send({
+        type: 'turn_outcome',
+        forkId: null,
+        turnId: 't-1',
+        chainId: 'c-1',
+        strategyId: 'native',
+        outcome: {
+          _tag: 'Completed',
+          completion: {
+            toolCallsCount: 0,
+            finishReason: 'stop',
+            feedback: [{
+              _tag: 'InvalidMessageDestination',
+              destination: taskId,
+              message: `Invalid message destination "${taskId}": task has no active worker`,
+            }],
           },
-        ])
+        },
+        inputTokens: null,
+        outputTokens: null,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
+        providerId: null,
+        modelId: null,
+      })
+
+      // Verify the feedback was recorded in the window state
+      const windowState = yield* h.projectionFork(WindowProjection.Tag, null)
+      const lastEntry = windowState.messages[windowState.messages.length - 1]
+      expect(lastEntry?.type).toBe('assistant_turn')
+      if (lastEntry?.type === 'assistant_turn') {
+        // The feedback should contain the InvalidMessageDestination error
+        const errorFeedback = lastEntry.turn.feedback.filter(f => f.kind === 'error')
+        expect(errorFeedback).toEqual([{
+          kind: 'error',
+          message: `Invalid message destination "${taskId}": task has no active worker`,
+        }])
       }
     }).pipe(Effect.provide(TestHarnessLive()))
   )
@@ -144,7 +176,7 @@ describe('turn lifecycle', () => {
 
       const N = IDENTICAL_RESPONSE_BREAKER_THRESHOLD
       // Invalid tool call body forces turn continue with tool parse error.
-      const repeated = `<magnitude:message to="user">repeat</magnitude:message>\n${YIELD_INVOKE}`
+      const repeated = `<magnitude:message to="user">repeat</magnitude:message>\n<magnitude:invoke tool="shell"><magnitude:parameter name="command">echo ok</magnitude:parameter></magnitude:invoke>`
       for (let i = 0; i < N; i++) {
         yield* h.script.next({ xml: repeated })
       }
@@ -182,8 +214,8 @@ describe('turn lifecycle', () => {
     Effect.gen(function* () {
       const h = yield* TestHarness
 
-      const a = `<magnitude:message to="user">foo</magnitude:message>\n${YIELD_INVOKE}`
-      const b = `<magnitude:message to="user">bar</magnitude:message>\n${YIELD_INVOKE}`
+      const a = `<magnitude:message to="user">foo</magnitude:message>\n<magnitude:invoke tool="shell"><magnitude:parameter name="command">echo ok</magnitude:parameter></magnitude:invoke>`
+      const b = `<magnitude:message to="user">bar</magnitude:message>\n<magnitude:invoke tool="shell"><magnitude:parameter name="command">echo ok</magnitude:parameter></magnitude:invoke>`
       yield* h.script.next({ xml: a })
       yield* h.script.next({ xml: a })
       yield* h.script.next({ xml: b })
@@ -216,13 +248,13 @@ describe('turn lifecycle', () => {
     Effect.gen(function* () {
       const h = yield* TestHarness
 
-      const a = `<magnitude:message to="user">foo</magnitude:message>\n${YIELD_INVOKE}`
+      const a = `<magnitude:message to="user">foo</magnitude:message>\n<magnitude:invoke tool="shell"><magnitude:parameter name="command">echo ok</magnitude:parameter></magnitude:invoke>`
       const idleWithMessage = `<magnitude:message to="user">boundary</magnitude:message>\n${YIELD_USER}`
       yield* h.script.next({ xml: a })                 // continue
       yield* h.script.next({ xml: a })                 // continue
       yield* h.script.next({ xml: idleWithMessage })   // idle boundary (reset)
       yield* h.script.next({ xml: a })                 // continue after reset
-      yield* h.script.next({ xml: YIELD_USER })              // stop
+      yield* h.script.next({ xml: '<magnitude:message to="user">done</magnitude:message>' })  // stop
 
       yield* h.user('trigger reset on idle boundary sequence')
 

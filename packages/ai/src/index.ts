@@ -5,6 +5,7 @@ export { Auth, type AuthApplicator } from "./auth/auth"
 export { Option } from "./options/option"
 
 // Core types
+export type { ModelCapabilities, ImagePlaceholderConfig } from "./model/capabilities"
 export type { ModelSpec, ModelStreamResult } from "./model/model-spec"
 export type { BoundModel } from "./model/bound-model"
 export type { OptionDef, InferCallOptions } from "./options/option"
@@ -22,7 +23,9 @@ export type {
   TerminalMessage,
 } from "./prompt/messages"
 export type { TextPart, ImagePart, ImageMediaType, ToolCallPart, JsonValue } from "./prompt/parts"
-export type { ToolCallId } from "./prompt/ids"
+export { normalizeVision, imagePlaceholder } from "./prompt/normalize-vision"
+export { createToolCallId } from "./prompt/ids"
+export type { ToolCallId, ProviderToolCallId } from "./prompt/ids"
 
 // Tools
 export type { ToolDefinition } from "./tools/tool-definition"

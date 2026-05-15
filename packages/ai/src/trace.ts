@@ -3,6 +3,7 @@ import type { ChatCompletionsRequest } from "./wire/chat-completions"
 import type { FinishReason } from "./response/events"
 import type { ResponseUsage } from "./response/usage"
 import type { ConnectionError } from "./errors/model-error"
+import type { ProviderToolCallId } from "./prompt/ids"
 
 // ---------------------------------------------------------------------------
 // Trace types
@@ -10,6 +11,7 @@ import type { ConnectionError } from "./errors/model-error"
 
 export interface AssembledToolCall {
   readonly id: string
+  readonly providerToolCallId: ProviderToolCallId
   readonly name: string
   readonly arguments: Record<string, unknown>
 }

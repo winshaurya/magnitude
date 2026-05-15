@@ -20,7 +20,7 @@ export const webFetchDisplay = createToolDisplay<WebFetchState>({
       return (
         <text style={{ wrapMode: 'word' }}>
           <span style={{ fg: theme.info }}>[↓] </span>
-          <span style={{ fg: theme.foreground }}>{'Fetching '}</span>
+          <span style={{ fg: theme.foreground }}>{'Fetch '}</span>
           <span style={{ fg: theme.muted }}>{state.url ? truncate(state.url, 60) : '...'}</span>
           <ShimmerText text=" ..." interval={WEB_SEARCH_SHIMMER_MS} primaryColor={theme.info} />
         </text>
@@ -43,15 +43,13 @@ export const webFetchDisplay = createToolDisplay<WebFetchState>({
     return (
       <text style={{ wrapMode: 'word' }}>
         <span style={{ fg: theme.info }}>[↓] </span>
-        <span style={{ fg: theme.foreground }}>{'Fetched '}</span>
+        <span style={{ fg: theme.foreground }}>{'Fetch '}</span>
         <span style={{ fg: theme.muted }}>{truncate(state.url ?? '', 60)}</span>
       </text>
     );
   },
   summary: (state) => {
     const url = state.url || 'URL';
-    if (state.phase === 'streaming' || state.phase === 'executing') return `Fetching ${url}`;
-    if (state.phase === 'error') return `Fetch ${url}`;
-    return `Fetched ${url}`;
+    return `Fetch ${url}`;
   },
 });

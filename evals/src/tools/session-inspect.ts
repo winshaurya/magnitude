@@ -10,7 +10,7 @@ import {
   DisplayProjection,
   CompactionProjection,
   SessionContextProjection,
-  ReplayProjection,
+  HarnessStateProjection,
   AgentRoutingProjection,
   AgentStatusProjection,
 } from '@magnitudedev/agent'
@@ -301,7 +301,7 @@ const InspectAgent = Agent.define<AppEvent>()({
     TurnProjection,
     WindowProjection,
     DisplayProjection,
-    ReplayProjection,
+    HarnessStateProjection,
     AgentRoutingProjection,
     AgentStatusProjection,
   ],
@@ -313,7 +313,7 @@ const InspectAgent = Agent.define<AppEvent>()({
       turn: TurnProjection,
       memory: WindowProjection,
       display: DisplayProjection,
-      replay: ReplayProjection,
+      harnessState: HarnessStateProjection,
       agentRouting: AgentRoutingProjection,
       agentStatus: AgentStatusProjection,
     }
@@ -338,7 +338,7 @@ async function replayProjections(events: any[]): Promise<Record<string, any>> {
     // Forked projections expose .getFork(forkId) -> per-fork state
     const forkIds: (string | null)[] = [null]
 
-    const forkedKeys = ['compaction', 'turn', 'memory', 'display', 'replay'] as const
+    const forkedKeys = ['compaction', 'turn', 'memory', 'display', 'harnessState'] as const
     for (const key of forkedKeys) {
       const inst = client.state[key] as any
       const forks: Record<string, any> = {}
@@ -386,7 +386,7 @@ async function cmdProjection(args: string[]) {
     compaction: 'compaction',
     sessioncontext: 'sessionContext',
 
-    replay: 'replay',
+    harnessstate: 'harnessState',
     agentrouting: 'agentRouting',
     agentstatus: 'agentStatus',
   }
@@ -394,7 +394,7 @@ async function cmdProjection(args: string[]) {
   const key = projectionKeyMap[projectionName.toLowerCase()]
   if (!key || !(key in allStates)) {
     console.error(`Unknown projection: ${projectionName}`)
-    console.error('Supported: Memory, Turn, Display, Compaction, SessionContext, Replay, AgentRouting, AgentStatus, all')
+    console.error('Supported: Memory, Turn, Display, Compaction, SessionContext, HarnessState, AgentRouting, AgentStatus, all')
     process.exit(1)
   }
 

@@ -105,10 +105,6 @@ function buildSummary(steps: readonly { type: string; toolKey?: ToolKey; state?:
   let searches = 0
   let edits = 0
 
-  let clicks = 0
-  let navigations = 0
-  let inputs = 0
-  let evaluations = 0
   let workerStarted = 0
   let workerFinished = 0
   let workerKilled = 0
@@ -136,10 +132,6 @@ function buildSummary(steps: readonly { type: string; toolKey?: ToolKey; state?:
     else if (step.toolKey === 'fileWrite') writes++
     else if (step.toolKey === 'fileSearch') searches++
     else if (step.toolKey === 'fileEdit') edits++
-    else if (step.toolKey === 'click' || step.toolKey === 'doubleClick' || step.toolKey === 'rightClick' || step.toolKey === 'drag') clicks++
-    else if (step.toolKey === 'navigate' || step.toolKey === 'goBack' || step.toolKey === 'switchTab' || step.toolKey === 'newTab') navigations++
-    else if (step.toolKey === 'type') inputs++
-    else if (step.toolKey === 'evaluate') evaluations++
   }
   const parts: string[] = []
   if (webSearches > 0) parts.push(`${webSearches} ${webSearches === 1 ? 'web search' : 'web searches'}`)
@@ -149,10 +141,6 @@ function buildSummary(steps: readonly { type: string; toolKey?: ToolKey; state?:
   if (edits > 0) parts.push(edits + ' ' + (edits === 1 ? 'edit' : 'edits'))
   if (searches > 0) parts.push(`${searches} ${searches === 1 ? 'search' : 'searches'}`)
 
-  if (clicks > 0) parts.push(`${clicks} ${clicks === 1 ? 'click' : 'clicks'}`)
-  if (navigations > 0) parts.push(`${navigations} ${navigations === 1 ? 'navigation' : 'navigations'}`)
-  if (inputs > 0) parts.push(`${inputs} ${inputs === 1 ? 'input' : 'inputs'}`)
-  if (evaluations > 0) parts.push(`${evaluations} ${evaluations === 1 ? 'eval' : 'evals'}`)
   if (workerStarted > 0) parts.push(`${workerStarted} ${workerStarted === 1 ? 'worker started' : 'workers started'}`)
   if (workerFinished > 0) parts.push(`${workerFinished} ${workerFinished === 1 ? 'worker finished' : 'workers finished'}`)
   if (workerKilled > 0) parts.push(`${workerKilled} ${workerKilled === 1 ? 'worker killed' : 'workers killed'}`)

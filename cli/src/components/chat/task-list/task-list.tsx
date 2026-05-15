@@ -21,7 +21,7 @@ import type {
   TaskAssigneeSlot,
   WorkerSlotDisplay,
 } from './types'
-import type { SubscribeForkCompaction } from '../types'
+import type { SubscribeForkCompaction, SubscribeForkWindow } from '../types'
 import type { RoleProfile } from '@magnitudedev/agent'
 import type { RoleId } from '@magnitudedev/roles'
 import { isRoleId } from '@magnitudedev/roles'
@@ -53,6 +53,7 @@ type Props = {
   pushForkOverlay: (forkId: string) => void
   roleProfiles: Partial<Record<RoleId, RoleProfile>> | null
   subscribeForkCompaction: SubscribeForkCompaction
+  subscribeForkWindow: SubscribeForkWindow
   scrollRefOverride?: { current: { scrollTo: (offset: number) => void } | null }
 }
 
@@ -69,6 +70,7 @@ type TaskRowProps = {
   agentIdWidth: number
   roleProfiles: Partial<Record<RoleId, RoleProfile>> | null
   subscribeForkCompaction: SubscribeForkCompaction
+  subscribeForkWindow: SubscribeForkWindow
 }
 
 type WorkerPresentation = {
@@ -281,6 +283,7 @@ function TaskRow({
   agentIdWidth,
   roleProfiles,
   subscribeForkCompaction,
+  subscribeForkWindow,
 }: TaskRowProps) {
   const theme = useTheme()
   const workerPresentation = getWorkerPresentation(task.assignee, now, theme, hovered)
@@ -312,11 +315,11 @@ function TaskRow({
       setWorkerTokens(null)
       return
     }
-    const unsub = subscribeForkCompaction(workerForkId, (state) => {
-      setWorkerTokens(state.lastActualInputTokens ?? (state.hasCompletedTurn ? state.tokenEstimate : null))
+    const unsub = subscribeForkWindow(workerForkId, (state) => {
+      setWorkerTokens(state.tokenEstimate > 0 ? state.tokenEstimate : null)
     })
     return unsub
-  }, [workerForkId, subscribeForkCompaction])
+  }, [workerForkId, subscribeForkWindow])
 
   const workerRole = task.assignee.kind === 'worker' && 'role' in task.assignee ? task.assignee.role : null
   const modelDisplayName = workerRole && isRoleId(workerRole)
@@ -391,6 +394,7 @@ export function TaskList({
   pushForkOverlay,
   roleProfiles,
   subscribeForkCompaction,
+  subscribeForkWindow,
   scrollRefOverride,
 }: Props) {
   const theme = useTheme()
@@ -569,6 +573,7 @@ export function TaskList({
               agentIdWidth={agentIdWidth}
               roleProfiles={roleProfiles}
               subscribeForkCompaction={subscribeForkCompaction}
+              subscribeForkWindow={subscribeForkWindow}
             />
           ))}
         </scrollbox>
@@ -589,6 +594,7 @@ export function TaskList({
               agentIdWidth={agentIdWidth}
               roleProfiles={roleProfiles}
               subscribeForkCompaction={subscribeForkCompaction}
+              subscribeForkWindow={subscribeForkWindow}
             />
           ))}
         </box>

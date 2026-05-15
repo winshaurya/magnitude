@@ -37,13 +37,13 @@ function isDirectoryPath(path: string, absoluteFiles: Map<string, string>): bool
   return false
 }
 
-function toAbsoluteVirtualPath(path: string, cwd: string, workspacePath: string): string {
+function toAbsoluteVirtualPath(path: string, cwd: string, scratchpadPath: string): string {
   const normalized = path.replace(/\\/g, '/')
   if (normalized.startsWith('$M/')) {
-    return normalize(resolve(workspacePath, normalized.slice('$M/'.length)))
+    return normalize(resolve(scratchpadPath, normalized.slice('$M/'.length)))
   }
   if (normalized.startsWith('${M}/')) {
-    return normalize(resolve(workspacePath, normalized.slice('${M}/'.length)))
+    return normalize(resolve(scratchpadPath, normalized.slice('${M}/'.length)))
   }
   return toAbsolutePath(path, cwd)
 }
@@ -59,11 +59,11 @@ function matchesVirtualGlob(path: string, glob: string): boolean {
   return regex.test(path)
 }
 
-export function createVirtualFsLayer(files: Map<string, string>, cwd: string, workspacePath: string): Layer.Layer<Fs> {
+export function createVirtualFsLayer(files: Map<string, string>, cwd: string, scratchpadPath: string): Layer.Layer<Fs> {
   const absoluteFiles = buildAbsoluteFileMap(files, cwd)
 
   const readFromMap = (path: string): string => {
-    const absolutePath = toAbsoluteVirtualPath(path, cwd, workspacePath)
+    const absolutePath = toAbsoluteVirtualPath(path, cwd, scratchpadPath)
     const content = absoluteFiles.get(absolutePath)
     if (content === undefined) {
       throw new Error(`ENOENT: no such file or directory, open '${path}'`)
@@ -72,6 +72,17 @@ export function createVirtualFsLayer(files: Map<string, string>, cwd: string, wo
   }
 
   return Layer.succeed(Fs, {
+    exists: (path) =>
+      Effect.try({
+        try: () => {
+          const absolutePath = toAbsoluteVirtualPath(path, cwd, scratchpadPath)
+          if (absoluteFiles.has(absolutePath)) return true
+          if (isDirectoryPath(absolutePath, absoluteFiles)) return true
+          return false
+        },
+        catch: (cause) => new FsError({ operation: 'exists', path, cause }),
+      }),
+
     readFile: (path) =>
       Effect.try({
         try: () => Buffer.from(readFromMap(path), 'utf8'),
@@ -87,7 +98,7 @@ export function createVirtualFsLayer(files: Map<string, string>, cwd: string, wo
     writeFile: (path, content) =>
       Effect.try({
         try: () => {
-          const absolutePath = toAbsoluteVirtualPath(path, cwd, workspacePath)
+          const absolutePath = toAbsoluteVirtualPath(path, cwd, scratchpadPath)
           const textContent = typeof content === 'string' ? content : Buffer.from(content).toString('utf8')
           absoluteFiles.set(absolutePath, textContent)
           const relativeKey = toRelativeVirtualKey(absolutePath, cwd)
@@ -99,7 +110,7 @@ export function createVirtualFsLayer(files: Map<string, string>, cwd: string, wo
     stat: (path) =>
       Effect.try({
         try: () => {
-          const absolutePath = toAbsoluteVirtualPath(path, cwd, workspacePath)
+          const absolutePath = toAbsoluteVirtualPath(path, cwd, scratchpadPath)
           if (absoluteFiles.has(absolutePath)) {
             return { isDirectory: () => false, isFile: () => true }
           }
@@ -113,7 +124,7 @@ export function createVirtualFsLayer(files: Map<string, string>, cwd: string, wo
 
     walk: (rootPath, options) =>
       Effect.try({ try: () => {
-        const absoluteRoot = toAbsoluteVirtualPath(rootPath, cwd, workspacePath)
+        const absoluteRoot = toAbsoluteVirtualPath(rootPath, cwd, scratchpadPath)
         const rootPrefix = `${absoluteRoot}${sep}`
         const maxDepth = options?.maxDepth
         const entries = new Map<string, FsWalkEntry>()
@@ -160,7 +171,7 @@ export function createVirtualFsLayer(files: Map<string, string>, cwd: string, wo
 
     search: ({ pattern, searchPath, glob, limit }) =>
       Effect.try({ try: () => {
-        const absoluteSearchPath = toAbsoluteVirtualPath(searchPath, cwd, workspacePath)
+        const absoluteSearchPath = toAbsoluteVirtualPath(searchPath, cwd, scratchpadPath)
         const searchPrefix = `${absoluteSearchPath}${sep}`
         const matches: FsSearchMatch[] = []
         const regex = new RegExp(pattern)

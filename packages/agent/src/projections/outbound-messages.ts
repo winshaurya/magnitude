@@ -7,7 +7,6 @@
 import { Projection, Signal } from '@magnitudedev/event-core'
 import type { AppEvent } from '../events'
 import { AgentRoutingProjection, getRoutingEntryByForkId } from './agent-routing'
-import { TaskGraphProjection } from './task-graph'
 import type { MessageDestination } from '../events'
 
 export interface PendingOutboundMessage {
@@ -32,7 +31,7 @@ export interface OutboundMessageCompletedSignal {
 
 export const OutboundMessagesProjection = Projection.define<AppEvent, OutboundMessagesState>()({
   name: 'OutboundMessages',
-  reads: [AgentRoutingProjection, TaskGraphProjection] as const,
+  reads: [AgentRoutingProjection] as const,
 
   initial: {
     pendingMessages: new Map(),
@@ -70,7 +69,6 @@ export const OutboundMessagesProjection = Projection.define<AppEvent, OutboundMe
       pendingMessages.delete(event.id)
 
       const agentState = read(AgentRoutingProjection)
-      const taskGraph = read(TaskGraphProjection)
 
       let targetForkId: string | null | undefined
       let userFacing: boolean
@@ -87,8 +85,7 @@ export const OutboundMessagesProjection = Projection.define<AppEvent, OutboundMe
           userFacing = false
           break
         case 'worker': {
-          const workerAgentId = taskGraph.tasks.get(entry.destination.taskId)?.worker?.agentId
-          targetForkId = workerAgentId ? agentState.agents.get(workerAgentId)?.forkId : undefined
+          targetForkId = agentState.agents.get(entry.destination.agentId)?.forkId
           userFacing = false
           break
         }

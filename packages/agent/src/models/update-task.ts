@@ -2,12 +2,12 @@ import { defineStateModel, type BaseState } from '@magnitudedev/harness'
 import { updateTaskTool } from '../tools/task-tools'
 
 export interface UpdateTaskState extends BaseState {
-  id?: string
+  taskId?: string
   status?: 'pending' | 'completed' | 'cancelled'
 }
 
 const initial: Omit<UpdateTaskState, 'phase'> = {
-  id: undefined,
+  taskId: undefined,
   status: undefined,
 }
 
@@ -22,7 +22,7 @@ export const updateTaskModel = defineStateModel(updateTaskTool)<UpdateTaskState>
       case 'ToolInputStarted':
         return { ...state, phase: 'streaming' }
       case 'ToolInputFieldChunk':
-        if (event.field === 'id') return { ...state, phase: 'streaming', id: (state.id ?? '') + event.delta }
+        if (event.field === 'taskId') return { ...state, phase: 'streaming', taskId: (state.taskId ?? '') + event.delta }
         return state
       case 'ToolInputReady':
         return state
@@ -30,24 +30,24 @@ export const updateTaskModel = defineStateModel(updateTaskTool)<UpdateTaskState>
         return {
           ...state,
           phase: 'executing',
-          id: event.input.id ?? state.id,
+          taskId: event.input.taskId ?? state.taskId,
           status: isValidUpdateTaskStatus(event.input.status) ? event.input.status : state.status,
         }
       case 'ToolExecutionEnded': {
         switch (event.result._tag) {
           case 'Success':
-            return { ...state, phase: 'completed', id: event.result.output.id, status: event.result.output.status }
+            return { ...state, phase: 'completed', taskId: event.result.output.taskId, status: event.result.output.status }
           case 'Error':
             return { ...state, phase: 'error' }
-          case 'Rejected':
-            return { ...state, phase: 'rejected' }
+          case 'Denied':
+            return { ...state, phase: 'rejected', errorMessage: String(event.result.denial) }
           case 'Interrupted':
             return { ...state, phase: 'interrupted' }
           default:
             return state
         }
       }
-      case 'ToolInputDecodeFailed':
+      case 'ToolInputRejected':
         return { ...state, phase: 'error', errorMessage: event.issue.message }
       case 'ToolEmission':
       case 'ToolInputFieldComplete':

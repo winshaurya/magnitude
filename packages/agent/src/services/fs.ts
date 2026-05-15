@@ -3,7 +3,7 @@ import { relative, resolve } from 'path'
 import { Context, Data, Effect, Layer } from 'effect'
 import { resolveRgPath } from '@magnitudedev/ripgrep'
 import { walk } from '../util/walk'
-import { resolveFileRefPath } from '../workspace/file-ref-resolution'
+import { resolveFileRefPath } from '../scratchpad/file-ref-resolution'
 
 export class FsError extends Data.TaggedError('FsError')<{
   readonly operation: string
@@ -137,6 +137,7 @@ export class Fs extends Context.Tag('Fs')<Fs, {
   readonly readText: (path: string) => Effect.Effect<string, FsError>
   readonly writeFile: (path: string, content: string | Uint8Array) => Effect.Effect<void, FsError>
   readonly stat: (path: string) => Effect.Effect<{ readonly isDirectory: () => boolean; readonly isFile: () => boolean }, FsError>
+  readonly exists: (path: string) => Effect.Effect<boolean, FsError>
   readonly walk: (rootPath: string, options?: { readonly maxDepth?: number; readonly respectGitignore?: boolean }) => Effect.Effect<readonly FsWalkEntry[], FsError>
   readonly search: (params: { readonly pattern: string; readonly searchPath: string; readonly glob?: string; readonly limit: number }) => Effect.Effect<readonly FsSearchMatch[], FsError>
 }>() {}
@@ -147,6 +148,14 @@ export const FsLive = Layer.succeed(Fs, {
   // Bun.write auto-creates parent directories; node fs.writeFile does not
   writeFile: (path, content) => tryFs('writeFile', path, async () => { await Bun.write(path, content) }),
   stat: (path) => tryFs('stat', path, async () => await stat(path)),
+  exists: (path) => tryFs('exists', path, async () => {
+    try {
+      await stat(path)
+      return true
+    } catch {
+      return false
+    }
+  }),
   walk: (rootPath, options) =>
     tryFs('walk', rootPath, async () => {
       const entries = await walk(rootPath, rootPath, 0, options?.maxDepth, null, {
@@ -164,7 +173,7 @@ export const FsLive = Layer.succeed(Fs, {
     tryFs('search', searchPath, async () => await rgSearch(pattern, searchPath, glob, limit)),
 })
 
-export function resolveFsPath(path: string, cwd: string, workspacePath: string): string {
-  const resolved = resolveFileRefPath(path, cwd, workspacePath)
+export function resolveFsPath(path: string, cwd: string, scratchpadPath: string): string {
+  const resolved = resolveFileRefPath(path, cwd, scratchpadPath)
   return resolved ? resolved.resolvedPath : resolve(cwd, path)
 }

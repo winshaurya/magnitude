@@ -5,14 +5,14 @@ import { knapsackFolderTree } from '../folder-tree-knapsack'
 
 const REPO_ROOT = join(import.meta.dir, '../../../../../')
 
-test('budget obeyed on real workspace', async () => {
+test('budget obeyed on real scratchpad', async () => {
   const budget = 2500
   const out = await knapsackFolderTree(REPO_ROOT, budget)
   expect(out.length).toBeGreaterThan(0)
   expect(Math.ceil(out.length / CHARS_PER_TOKEN_UPPER)).toBeLessThanOrEqual(budget)
 })
 
-test('files appear in output on real workspace', async () => {
+test('files appear in output on real scratchpad', async () => {
   const out = await knapsackFolderTree(REPO_ROOT, 2500)
   // should contain at least one file (no extension-less dir-only output)
   expect(out).toMatch(/\.\w+/)

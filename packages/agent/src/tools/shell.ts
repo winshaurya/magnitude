@@ -46,7 +46,7 @@ export const shellTool = defineHarnessTool({
   errorSchema: ShellErrorSchema,
   execute: ({ command, timeout }, _ctx) =>
     Effect.gen(function* () {
-      const { cwd, workspacePath } = yield* WorkingDirectoryTag
+      const { cwd, scratchpadPath } = yield* WorkingDirectoryTag
       let activeChild: ReturnType<typeof spawn> | null = null
       const effectiveTimeout = Math.min(Math.max(timeout ?? DEFAULT_TIMEOUT_S, 1), MAX_TIMEOUT_S)
 
@@ -65,7 +65,7 @@ export const shellTool = defineHarnessTool({
 
               const child = spawn(shellPath, ['-c', command], {
                 cwd,
-                env: agentEnv(cwd, workspacePath),
+                env: agentEnv(cwd, scratchpadPath),
               })
               activeChild = child
 

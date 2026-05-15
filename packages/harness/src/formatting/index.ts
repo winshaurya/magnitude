@@ -1,3 +1,4 @@
-export { formatToolResult } from './format-result'
-export { formatDecodeFailure } from './format-decode-failure'
 export { isImageValue, toImagePart, isScalar, renderToolOutput, renderTagged } from './helpers'
+export { renderExpectedParams } from './schema-render'
+export type { ToolResultFormatter } from './tool-result-formatter'
+export { createToolResultFormatter } from './tool-result-formatter'

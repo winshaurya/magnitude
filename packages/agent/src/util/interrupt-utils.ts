@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 import type { TurnOutcomeEvent } from '../events'
 import { isRoleId, type RoleId } from '../agents/role-validation'
 import { getAgentDefinition } from '../agents/registry'
-import { CanonicalTurnProjection } from '../projections/canonical-turn'
+import { HarnessStateProjection } from '../projections/harness-state'
 import { AgentStatusProjection, getAgentByForkId } from '../projections/agent-status'
 
 export const buildInterruptedTurnOutcome = (params: {
@@ -12,10 +12,10 @@ export const buildInterruptedTurnOutcome = (params: {
 }) => Effect.gen(function* () {
   const { forkId, turnId, chainId } = params
 
-  const canonicalProjection = yield* CanonicalTurnProjection.Tag
+  const harnessStateProjection = yield* HarnessStateProjection.Tag
   const agentProjection = yield* AgentStatusProjection.Tag
 
-  yield* canonicalProjection.getFork(forkId)
+  yield* harnessStateProjection.getFork(forkId)
   const agentState = yield* agentProjection.get
 
   const roleId: RoleId = forkId

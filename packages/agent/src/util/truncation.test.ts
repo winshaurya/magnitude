@@ -1,6 +1,6 @@
 import { test, expect, describe } from 'bun:test'
-import { measureBounded, truncate } from './truncation'
-import type { JsonValue } from './truncation'
+import { measureBounded, truncate } from '../truncation'
+import type { JsonValue } from '../truncation'
 
 describe('truncation handles undefined values', () => {
   test('measureBounded with top-level undefined', () => {

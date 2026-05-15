@@ -22,7 +22,7 @@ export const fileTreeDisplay = createToolDisplay<FileTreeState>({
             <span style={{ fg: isError ? theme.error : theme.info }}>{isError ? '✗ ' : '◫ '}</span>
             {isRunning ? (
               <>
-                <span style={{ fg: theme.foreground }}>{'Listing '}</span>
+                <span style={{ fg: theme.foreground }}>{'List '}</span>
                 <span style={{ fg: theme.muted }}>{state.path || '...'}</span>
                 <ShimmerText text="..." interval={SHIMMER_INTERVAL_MS} primaryColor={theme.secondary} />
               </>
@@ -35,7 +35,7 @@ export const fileTreeDisplay = createToolDisplay<FileTreeState>({
               </>
             ) : (
               <>
-                <span style={{ fg: theme.foreground }}>{'Listed '}</span>
+                <span style={{ fg: theme.foreground }}>{'List '}</span>
                 <span style={{ fg: theme.muted }}>{state.path}</span>
                 {state.entries.length > 0 ? (
                   <>
@@ -74,8 +74,6 @@ export const fileTreeDisplay = createToolDisplay<FileTreeState>({
   },
   summary: (state) => {
     const path = state.path || 'files';
-    if (state.phase === 'streaming' || state.phase === 'executing') return `Listing ${path}`;
-    if (state.phase === 'completed') return `Listed ${path}`;
     return `List ${path}`;
   },
 });

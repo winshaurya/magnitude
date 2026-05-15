@@ -42,25 +42,25 @@ export class ResponseBuilder {
     return this
   }
 
-  spawnWorker(id: string, message: string): this {
-    this.tools.push(xmlInvoke('spawn_worker', { id }, message))
+  spawnWorker(taskId: string, role: string, agentId: string, message: string): this {
+    this.tools.push(xmlInvoke('spawn_worker', { taskId, role, agentId }, message))
     return this
   }
 
-  createTask(id: string, title: string, parent?: string): this {
-    const params: ToolParams = { id, title }
+  createTask(taskId: string, title: string, parent?: string): this {
+    const params: ToolParams = { taskId, title }
     if (parent) params.parent = parent
     this.tools.push(xmlInvoke('create_task', params))
     return this
   }
 
-  updateTask(id: string, status: string): this {
-    this.tools.push(xmlInvoke('update_task', { id, status }))
+  updateTask(taskId: string, status: string): this {
+    this.tools.push(xmlInvoke('update_task', { taskId, status }))
     return this
   }
 
-  killWorker(id: string): this {
-    this.tools.push(xmlInvoke('kill_worker', { id }))
+  killWorker(taskId: string): this {
+    this.tools.push(xmlInvoke('kill_worker', { taskId }))
     return this
   }
 
@@ -74,9 +74,9 @@ export class ResponseBuilder {
    * agentId equals the task id. The `type` parameter is accepted but ignored —
    * lead can only spawn workers in the current role's model.
    */
-  createAgent(agentId: string, _type: string, title: string, message: string): this {
-    this.tools.push(xmlInvoke('create_task', { id: agentId, title }))
-    this.tools.push(xmlInvoke('spawn_worker', { id: agentId, message }))
+  createAgent(taskId: string, agentId: string, title: string, role: string, message: string): this {
+    this.tools.push(xmlInvoke('create_task', { taskId, title }))
+    this.tools.push(xmlInvoke('spawn_worker', { taskId, role, agentId, message }))
     return this
   }
 

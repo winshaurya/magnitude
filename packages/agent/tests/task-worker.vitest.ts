@@ -2,8 +2,6 @@ import { describe, expect, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { TestHarness, TestHarnessLive } from '../src/test-harness/harness'
 import { TaskWorkerProjection } from '../src/projections/task-worker'
-import { ToolStateProjection, type ToolStateProjectionState } from '../src/projections/tool-state'
-import type { ToolHandle } from '../src/tools/tool-handle'
 
 const ts = (n: number) => 1_700_400_000_000 + n
 
@@ -27,7 +25,7 @@ describe('TaskWorkerProjection', () => {
         turnId: 'turn-1',
         toolCallId: 'spawn-1',
         toolKey: 'spawnWorker',
-        event: { _tag: 'ToolInputStarted' },
+        event: { _tag: 'ToolInputStarted', toolCallId: 'spawn-1', toolName: 'spawn-worker', toolKey: 'spawnWorker' },
       } as any)
       yield* h.send({
         type: 'tool_event',
@@ -36,7 +34,25 @@ describe('TaskWorkerProjection', () => {
         turnId: 'turn-1',
         toolCallId: 'spawn-1',
         toolKey: 'spawnWorker',
-        event: { _tag: 'ToolInputFieldValue', field: 'id', value: 'task-1' },
+        event: { _tag: 'ToolInputFieldChunk', toolCallId: 'spawn-1', field: 'taskId', path: ['taskId'], delta: 'task-1' },
+      } as any)
+      yield* h.send({
+        type: 'tool_event',
+        timestamp: ts(2.6),
+        forkId: null,
+        turnId: 'turn-1',
+        toolCallId: 'spawn-1',
+        toolKey: 'spawnWorker',
+        event: { _tag: 'ToolInputFieldChunk', toolCallId: 'spawn-1', field: 'role', path: ['role'], delta: 'engineer' },
+      } as any)
+      yield* h.send({
+        type: 'tool_event',
+        timestamp: ts(2.7),
+        forkId: null,
+        turnId: 'turn-1',
+        toolCallId: 'spawn-1',
+        toolKey: 'spawnWorker',
+        event: { _tag: 'ToolInputFieldChunk', toolCallId: 'spawn-1', field: 'message', path: ['message'], delta: 'do it' },
       } as any)
       yield* h.send({
         type: 'tool_event',
@@ -47,7 +63,7 @@ describe('TaskWorkerProjection', () => {
         toolKey: 'spawnWorker',
         event: {
           _tag: 'ToolInputReady',
-          input: { id: 'task-1', role: 'engineer', message: 'do it' },
+          toolCallId: 'spawn-1',
         },
       } as any)
       yield* h.send({
@@ -156,7 +172,7 @@ describe('TaskWorkerProjection', () => {
         turnId: 'turn-1',
         toolCallId: 'kill-1',
         toolKey: 'killWorker',
-        event: { _tag: 'ToolInputStarted' },
+        event: { _tag: 'ToolInputStarted', toolCallId: 'kill-1', toolName: 'kill-worker', toolKey: 'killWorker' },
       } as any)
       yield* h.send({
         type: 'tool_event',
@@ -165,7 +181,7 @@ describe('TaskWorkerProjection', () => {
         turnId: 'turn-1',
         toolCallId: 'kill-1',
         toolKey: 'killWorker',
-        event: { _tag: 'ToolInputFieldValue', field: 'id', value: 'task-1' },
+        event: { _tag: 'ToolInputFieldChunk', toolCallId: 'kill-1', field: 'taskId', path: ['taskId'], delta: 'task-1' },
       } as any)
       yield* h.send({
         type: 'tool_event',
@@ -174,7 +190,7 @@ describe('TaskWorkerProjection', () => {
         turnId: 'turn-1',
         toolCallId: 'kill-1',
         toolKey: 'killWorker',
-        event: { _tag: 'ToolInputReady', input: { id: 'task-1' } },
+        event: { _tag: 'ToolInputReady', toolCallId: 'kill-1' },
       } as any)
 
       const state = yield* h.projection(TaskWorkerProjection.Tag)
@@ -234,7 +250,7 @@ describe('TaskWorkerProjection', () => {
         turnId: 'turn-1',
         toolCallId: 'kill-1',
         toolKey: 'killWorker',
-        event: { _tag: 'ToolInputStarted' },
+        event: { _tag: 'ToolInputStarted', toolCallId: 'kill-1', toolName: 'kill-worker', toolKey: 'killWorker' },
       } as any)
       yield* h.send({
         type: 'tool_event',
@@ -243,7 +259,7 @@ describe('TaskWorkerProjection', () => {
         turnId: 'turn-1',
         toolCallId: 'kill-1',
         toolKey: 'killWorker',
-        event: { _tag: 'ToolInputFieldValue', field: 'id', value: 'task-1' },
+        event: { _tag: 'ToolInputFieldChunk', toolCallId: 'kill-1', field: 'taskId', path: ['taskId'], delta: 'task-1' },
       } as any)
       yield* h.send({
         type: 'tool_event',
@@ -252,7 +268,7 @@ describe('TaskWorkerProjection', () => {
         turnId: 'turn-1',
         toolCallId: 'kill-1',
         toolKey: 'killWorker',
-        event: { _tag: 'ToolInputReady', input: { id: 'task-1' } },
+        event: { _tag: 'ToolInputReady', toolCallId: 'kill-1' },
       } as any)
 
       yield* h.send({
@@ -262,7 +278,7 @@ describe('TaskWorkerProjection', () => {
         turnId: 'turn-2',
         toolCallId: 'spawn-1',
         toolKey: 'spawnWorker',
-        event: { _tag: 'ToolInputStarted' },
+        event: { _tag: 'ToolInputStarted', toolCallId: 'spawn-1', toolName: 'spawn-worker', toolKey: 'spawnWorker' },
       } as any)
       yield* h.send({
         type: 'tool_event',
@@ -271,7 +287,25 @@ describe('TaskWorkerProjection', () => {
         turnId: 'turn-2',
         toolCallId: 'spawn-1',
         toolKey: 'spawnWorker',
-        event: { _tag: 'ToolInputFieldValue', field: 'id', value: 'task-1' },
+        event: { _tag: 'ToolInputFieldChunk', toolCallId: 'spawn-1', field: 'taskId', path: ['taskId'], delta: 'task-1' },
+      } as any)
+      yield* h.send({
+        type: 'tool_event',
+        timestamp: ts(6.6),
+        forkId: null,
+        turnId: 'turn-2',
+        toolCallId: 'spawn-1',
+        toolKey: 'spawnWorker',
+        event: { _tag: 'ToolInputFieldChunk', toolCallId: 'spawn-1', field: 'role', path: ['role'], delta: 'engineer' },
+      } as any)
+      yield* h.send({
+        type: 'tool_event',
+        timestamp: ts(6.7),
+        forkId: null,
+        turnId: 'turn-2',
+        toolCallId: 'spawn-1',
+        toolKey: 'spawnWorker',
+        event: { _tag: 'ToolInputFieldChunk', toolCallId: 'spawn-1', field: 'message', path: ['message'], delta: 'replace it' },
       } as any)
       yield* h.send({
         type: 'tool_event',
@@ -282,7 +316,7 @@ describe('TaskWorkerProjection', () => {
         toolKey: 'spawnWorker',
         event: {
           _tag: 'ToolInputReady',
-          input: { id: 'task-1', role: 'engineer', message: 'replace it' },
+          toolCallId: 'spawn-1',
         },
       } as any)
 
@@ -424,7 +458,7 @@ describe('TaskWorkerProjection', () => {
         turnId: 'turn-1',
         toolCallId: 'kill-1',
         toolKey: 'killWorker',
-        event: { _tag: 'ToolInputStarted' },
+        event: { _tag: 'ToolInputStarted', toolCallId: 'kill-1', toolName: 'kill-worker', toolKey: 'killWorker' },
       } as any)
       yield* h.send({
         type: 'tool_event',
@@ -433,7 +467,7 @@ describe('TaskWorkerProjection', () => {
         turnId: 'turn-1',
         toolCallId: 'kill-1',
         toolKey: 'killWorker',
-        event: { _tag: 'ToolInputReady', input: { id: 'task-1' } },
+        event: { _tag: 'ToolInputReady', toolCallId: 'kill-1' },
       } as any)
       yield* h.send({
         type: 'agent_killed',
@@ -458,7 +492,7 @@ describe('TaskWorkerProjection', () => {
         turnId: 'turn-1',
         toolCallId: 'kill-1',
         toolKey: 'killWorker',
-        event: { _tag: 'ToolExecutionEnded', output: { id: 'task-1' } },
+        event: { _tag: 'ToolExecutionEnded', toolCallId: 'kill-1', toolName: 'kill-worker', toolKey: 'killWorker', result: { _tag: 'Success', output: { taskId: 'task-1' } } },
       } as any)
 
       const state = yield* h.projection(TaskWorkerProjection.Tag)

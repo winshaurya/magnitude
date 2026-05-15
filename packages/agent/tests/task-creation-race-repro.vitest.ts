@@ -12,7 +12,7 @@ describe('task creation + spawn-worker', () => {
       yield* h.script.next(
         response()
           .createTask('my-task', 'My task')
-          .spawnWorker('my-task', 'Do the work')
+          .spawnWorker('my-task', 'engineer', 'my-task', 'Do the work')
           .message('Created task and spawned worker.')
           .yield()
       )

@@ -14,9 +14,8 @@ import type { ConfigState } from '../ambient/config-ambient'
 import { readTool, writeTool, editTool, treeTool, grepTool, viewTool } from './fs'
 import { shellTool } from './shell'
 import { webSearchTool } from './web-search'
-import { type BrowserToolKey, isBrowserToolKey } from './browser-tools'
 import { webFetchTool } from './web-fetch-tool'
-import { createTaskTool, updateTaskTool, spawnWorkerTool, killWorkerTool } from './task-tools'
+import { createTaskTool, updateTaskTool, spawnWorkerTool, killWorkerTool, reassignWorkerTool } from './task-tools'
 import { skillTool } from './skill-tool'
 import { messageWorkerTool } from './agent-communication'
 
@@ -34,8 +33,11 @@ import { createTaskModel } from '../models/create-task'
 import { updateTaskModel } from '../models/update-task'
 import { spawnWorkerModel } from '../models/spawn-worker'
 import { killWorkerModel } from '../models/kill-worker'
+import { reassignWorkerModel } from '../models/reassign-worker'
 import { skillActivationModel } from '../models/skill-activation'
 import { messageWorkerModel } from '../models/message-worker'
+import { compactTool } from './compact'
+import { compactModel } from '../models/compact'
 
 // =============================================================================
 // Group Toolkits
@@ -60,31 +62,36 @@ export const webToolkit = defineToolkit({
 })
 
 export const taskToolkit = defineToolkit({
-  createTask:    { tool: createTaskTool,    state: createTaskModel },
-  updateTask:    { tool: updateTaskTool,    state: updateTaskModel },
-  spawnWorker:   { tool: spawnWorkerTool,   state: spawnWorkerModel },
-  killWorker:    { tool: killWorkerTool,    state: killWorkerModel },
-  messageWorker: { tool: messageWorkerTool, state: messageWorkerModel },
+  createTask:      { tool: createTaskTool,      state: createTaskModel },
+  updateTask:      { tool: updateTaskTool,      state: updateTaskModel },
+  spawnWorker:     { tool: spawnWorkerTool,     state: spawnWorkerModel },
+  killWorker:      { tool: killWorkerTool,      state: killWorkerModel },
+  reassignWorker:  { tool: reassignWorkerTool,  state: reassignWorkerModel },
+  messageWorker:   { tool: messageWorkerTool,  state: messageWorkerModel },
 })
 
 export const skillToolkit = defineToolkit({
   skill: { tool: skillTool, state: skillActivationModel },
 })
 
+export const compactToolkit = defineToolkit({
+  compact: { tool: compactTool, state: compactModel },
+})
+
 // =============================================================================
 // Composite Toolkits
 // =============================================================================
 
-/** fs + shell + web + skill — shared by most worker roles */
+/** fs + shell + web + skill + compact — shared by most worker roles */
 const workerBase = mergeToolkits(
   mergeToolkits(fsToolkit, shellToolkit),
-  mergeToolkits(webToolkit, skillToolkit),
+  mergeToolkits(webToolkit, mergeToolkits(skillToolkit, compactToolkit)),
 )
 
-/** fs + shell + skill — no web access */
+/** fs + shell + skill + compact — no web access */
 const criticBase = mergeToolkits(
   mergeToolkits(fsToolkit, shellToolkit),
-  skillToolkit,
+  mergeToolkits(skillToolkit, compactToolkit),
 )
 
 /** fs + shell + web + task + skill — full leader toolkit */
@@ -107,7 +114,7 @@ const ROLE_TOOLKITS: Record<RoleId, Toolkit> = {
   scout:     workerBase,
   architect: workerBase,
   critic:    criticBase,
-  advisor:   emptyToolkit,
+  advisor:   compactToolkit,
 }
 
 // =============================================================================
@@ -115,12 +122,12 @@ const ROLE_TOOLKITS: Record<RoleId, Toolkit> = {
 // =============================================================================
 
 /** Tools that should not be displayed in the UI */
-export const HIDDEN_TOOLS: ReadonlySet<string> = new Set(['createTask', 'updateTask', 'killWorker', 'messageWorker'])
+export const HIDDEN_TOOLS: ReadonlySet<string> = new Set(['createTask', 'updateTask', 'killWorker', 'reassignWorker', 'messageWorker', 'compact'])
 
-export type ToolKey = ToolkitKeys<typeof leaderToolkit> | BrowserToolKey
+export type ToolKey = ToolkitKeys<typeof leaderToolkit>
 
 export function isToolKey(value: string): value is ToolKey {
-  return value in leaderToolkit.entries || isBrowserToolKey(value)
+  return value in leaderToolkit.entries
 }
 
 /**

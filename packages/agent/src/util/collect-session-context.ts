@@ -10,8 +10,8 @@ import type { SessionContext, GitContext } from '../events'
 import { loadSkills } from '@magnitudedev/skills'
 import { runGitCommand } from './git-command'
 import { knapsackFolderTree } from './folder-tree-knapsack'
-import { truncateFolderTree } from './folder-tree-truncation'
-import { buildTree } from './tree'
+import { truncateFolderTree } from '../truncation'
+import { buildTree } from '../truncation/folder-tree/tree'
 import { walk } from './walk'
 
 // =============================================================================
@@ -171,7 +171,7 @@ export interface CollectSessionContextOptions {
   storage?: StorageClient<RoleId>
 }
 
-export async function collectSessionContext(opts?: CollectSessionContextOptions): Promise<Omit<SessionContext, 'workspacePath'>> {
+export async function collectSessionContext(opts?: CollectSessionContextOptions): Promise<Omit<SessionContext, 'scratchpadPath'>> {
   const cwd = opts?.cwd ?? process.cwd()
   const platform = normalizePlatform(process.platform)
 

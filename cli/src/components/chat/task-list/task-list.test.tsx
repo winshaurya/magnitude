@@ -86,7 +86,7 @@ test('renders task status glyphs as only completed and not completed', () => {
     <TaskList
       tasks={[
         makeTask({ taskId: 't-completed', status: 'completed' }),
-        makeTask({ taskId: 't-working', status: 'working' }),
+        makeTask({ taskId: 't-working', status: 'pending' }),
         makeTask({ taskId: 't-pending', status: 'pending' }),
       ]}
       pushForkOverlay={noop}
@@ -211,7 +211,7 @@ test('default header shows Task (X completed, Y active) using not-completed acti
       tasks={[
         makeTask({ taskId: 'root', title: 'Root', depth: 0, status: 'pending' }),
         makeTask({ taskId: 'child-done', title: 'Done', depth: 1, parentId: 'root', status: 'completed' }),
-        makeTask({ taskId: 'child-working', title: 'Working', depth: 1, parentId: 'root', status: 'working' }),
+        makeTask({ taskId: 'child-working', title: 'Working', depth: 1, parentId: 'root', status: 'pending' }),
       ]}
       pushForkOverlay={noop}
       roleProfiles={null}
@@ -333,7 +333,7 @@ test('sticky root header shows correct subtree progress counts', () => {
       tasks={[
         makeTask({ taskId: 'root-a', title: 'Root A', depth: 0, status: 'pending' }),
         makeTask({ taskId: 'child-a1', title: 'Child A1', depth: 1, parentId: 'root-a', status: 'completed' }),
-        makeTask({ taskId: 'child-a2', title: 'Child A2', depth: 1, parentId: 'root-a', status: 'working' }),
+        makeTask({ taskId: 'child-a2', title: 'Child A2', depth: 1, parentId: 'root-a', status: 'pending' }),
         makeTask({ taskId: 'child-a3', title: 'Child A3', depth: 1, parentId: 'root-a', status: 'pending' }),
         makeTask({ taskId: 'child-a4', title: 'Child A4', depth: 1, parentId: 'root-a', status: 'completed' }),
         makeTask({ taskId: 'child-a5', title: 'Child A5', depth: 1, parentId: 'root-a', status: 'pending' }),

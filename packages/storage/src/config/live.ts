@@ -31,19 +31,6 @@ const makeConfigStorageShape = <TSlot extends string>(
       }))
     }),
 
-  getTelemetryEnabled: () =>
-    Effect.promise(async () => {
-      const config = await loadConfig(globalStorage.paths)
-      return config.telemetry !== false
-    }),
-
-  setTelemetryEnabled: (value: boolean) =>
-    Effect.promise(async () => {
-      await updateConfig(globalStorage.paths, (config) => ({
-        ...config,
-        telemetry: value,
-      }))
-    }),
 })
 
 export const ConfigStorageLive = Layer.effect(

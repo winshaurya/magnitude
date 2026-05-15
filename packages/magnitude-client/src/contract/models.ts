@@ -4,7 +4,7 @@
 
 import type { RoleId } from "./roles"
 
-export type EffortLevel = "low" | "medium" | "high"
+export type EffortLevel = "low" | "medium" | "high" | "max"
 
 export type ReasoningCapability =
   | { readonly type: "none" }
@@ -31,4 +31,9 @@ export interface MagnitudeModelInfo {
 export interface ModelListResponse {
   readonly object: "list"
   readonly data: readonly MagnitudeModelInfo[]
+}
+
+export type MagnitudeAdditionalOptions = {
+  /** Override the default trait labels used in grammar-constrained reasoning. */
+  traits?: string[]
 }

@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import type { ToolCallId } from "./ids"
+import type { ProviderToolCallId, ToolCallId } from "./ids"
 
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | { readonly [key: string]: JsonValue } | readonly JsonValue[]
@@ -35,6 +35,7 @@ export interface ImagePart {
 export interface ToolCallPart {
   readonly _tag: "ToolCallPart"
   readonly id: ToolCallId
+  readonly providerToolCallId: ProviderToolCallId
   readonly name: string
   readonly input: JsonValue
 }
@@ -50,6 +51,7 @@ export const ImagePartSchema = Schema.TaggedStruct("ImagePart", {
 
 export const ToolCallPartSchema = Schema.TaggedStruct("ToolCallPart", {
   id: Schema.String,
+  providerToolCallId: Schema.String,
   name: Schema.String,
   input: JsonValueSchema,
 })

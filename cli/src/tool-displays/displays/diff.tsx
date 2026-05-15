@@ -46,7 +46,7 @@ export const diffDisplay = createToolDisplay<DiffState>({
           <box style={{ flexDirection: 'row' }}>
             <text>
               <span style={{ fg: theme.info }}>{'✎ '}</span>
-              <span style={{ fg: theme.foreground }}>{'Edited '}</span>
+              <span style={{ fg: theme.foreground }}>{'Edit '}</span>
             </text>
             <Button
               onClick={() => { if (path) onFileClick?.(path) }}
@@ -110,7 +110,7 @@ export const diffDisplay = createToolDisplay<DiffState>({
                 </>
               ) : (
                 <>
-                  <span style={{ fg: theme.foreground }}>{'Editing '}</span>
+                  <span style={{ fg: theme.foreground }}>{'Edit '}</span>
                   <span style={{ fg: theme.muted }}>{String(path ?? '...')}</span>
                   <ShimmerText text="..." interval={SHIMMER_INTERVAL_MS} primaryColor={theme.secondary} />
                 </>
@@ -132,7 +132,6 @@ export const diffDisplay = createToolDisplay<DiffState>({
   },
   summary: (state) => {
     const path = state.path || 'file';
-    if (state.phase === 'streaming' || state.phase === 'executing') return `Editing ${String(path)}`;
-    return `Edited ${String(path)}`;
+    return `Edit ${String(path)}`;
   },
 });

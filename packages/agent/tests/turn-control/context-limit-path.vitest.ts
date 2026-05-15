@@ -24,7 +24,7 @@ describe('turn control context-limit path', () => {
 
       assertNoTurnIdMismatch(eventsForFork(h, null))
       yield* assertTurnStateAligned(h)
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('compaction in-progress path toggles blocking during context-limit hit', () =>
@@ -40,7 +40,7 @@ describe('turn control context-limit path', () => {
 
       yield* h.send(mkTurnOutcomeEventFailure({ turnId: 't-cl-2', chainId: 'c-cl' }))
       assertNoTurnIdMismatch(eventsForFork(h, null))
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('next turn after context-limit completion gets fresh turnId', () =>
@@ -50,7 +50,7 @@ describe('turn control context-limit path', () => {
       yield* h.send(mkTurnStarted({ turnId: 't-cl-3a', chainId: 'c-cl-3' }))
       yield* h.send(mkContextLimitHit())
       yield* h.send(mkTurnOutcomeEventFailure({ turnId: 't-cl-3a', chainId: 'c-cl-3' }))
-      yield* h.send({ type: 'compaction_failed', forkId: null, error: 'cleanup' })
+      yield* h.send({ type: 'compaction_failed', forkId: null, error: 'cleanup', presentation: null })
 
       yield* h.send(mkTurnStarted({ turnId: 't-cl-3b', chainId: 'c-cl-3' }))
       yield* h.send(mkTurnOutcomeEventSuccess({ turnId: 't-cl-3b', chainId: 'c-cl-3' }))
@@ -58,7 +58,7 @@ describe('turn control context-limit path', () => {
       const starts = eventsForFork(h, null).filter((e) => e.type === 'turn_started')
       expect(starts[0]?.turnId).not.toBe(starts[1]?.turnId)
       assertNoTurnIdMismatch(eventsForFork(h, null))
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('repeated context-limit cycles preserve ID pairing', () =>
@@ -69,11 +69,11 @@ describe('turn control context-limit path', () => {
         yield* h.send(mkTurnStarted({ turnId: id, chainId: 'c-rep' }))
         yield* h.send(mkContextLimitHit(null, `ctx-${id}`))
         yield* h.send(mkTurnOutcomeEventFailure({ turnId: id, chainId: 'c-rep' }))
-        yield* h.send({ type: 'compaction_failed', forkId: null, error: 'retry' })
+        yield* h.send({ type: 'compaction_failed', forkId: null, error: 'retry', presentation: null })
       }
 
       assertNoTurnIdMismatch(eventsForFork(h, null))
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('full transcript invariant holds for context-limit sequence', () =>
@@ -86,18 +86,13 @@ describe('turn control context-limit path', () => {
       yield* h.send(mkContextLimitHit())
       yield* h.send(mkTurnOutcomeEventFailure({ turnId: 't-b', chainId: 'c-full' }))
       yield* h.send({
-        type: 'compaction_completed',
+        type: 'compaction_injected',
         forkId: null,
-        summary: 's',
-        compactedMessageCount: 1,
-        tokensSaved: 100,
-        preservedVariables: [],
-        refreshedContext: null,
       })
       yield* h.send(mkTurnStarted({ turnId: 't-c', chainId: 'c-full' }))
       yield* h.send(mkTurnOutcomeEventSuccess({ turnId: 't-c', chainId: 'c-full' }))
 
       assertNoTurnIdMismatch(eventsForFork(h, null))
-    }).pipe(Effect.provide(TestHarnessLive({ workers: { compaction: true } })))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false, compaction: true } })))
   )
 })

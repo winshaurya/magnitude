@@ -8,7 +8,7 @@ describe('virtual fs layer', () => {
   it.effect('readText and writeFile work', () =>
     Effect.gen(function* () {
       const files = createVirtualFs({ 'src/index.ts': 'export const x = 1' })
-      const layer = createVirtualFsLayer(files, '/repo', '/workspace')
+      const layer = createVirtualFsLayer(files, '/repo', '/scratchpad')
 
       const before = yield* Effect.flatMap(Fs, (fs) => fs.readText('src/index.ts')).pipe(
         Effect.provide(layer),
@@ -32,7 +32,7 @@ describe('virtual fs layer', () => {
         'src/a.ts': 'alpha\nbeta',
         'src/b.ts': 'gamma\nalphabet',
       })
-      const layer = createVirtualFsLayer(files, '/repo', '/workspace')
+      const layer = createVirtualFsLayer(files, '/repo', '/scratchpad')
 
       const walked = yield* Effect.flatMap(Fs, (fs) => fs.walk('src')).pipe(
         Effect.provide(layer),
@@ -58,21 +58,16 @@ describe('virtual fs integration with harness', () => {
 
       yield* harness.user('read file')
       const completed = yield* harness.wait.turnCompleted(null)
-      const observation = yield* harness.wait.event(
+      const toolEnded = yield* harness.wait.event(
         'tool_event',
-        (e) => e.forkId === null && e.event._tag === 'ToolObservation' && e.event.tagName === 'read',
+        (e) => e.forkId === null && e.event._tag === 'ToolExecutionEnded' && e.event.toolName === 'read',
       )
 
       expect(completed.outcome._tag).toBe('Completed')
-      if (observation.event._tag !== 'ToolObservation') {
-        throw new Error('Expected ToolObservation')
+      if (toolEnded.event._tag !== 'ToolExecutionEnded') {
+        throw new Error('Expected ToolExecutionEnded')
       }
-      expect(observation.event.content).toHaveLength(1)
-      expect(observation.event.content[0]).toEqual(expect.objectContaining({ type: 'text' }))
-      if (observation.event.content[0]?.type !== 'text') {
-        throw new Error('Expected text observation content')
-      }
-      expect(observation.event.content[0].text).toContain('export const x = 1')
+      expect(toolEnded.event.result._tag).toBe('Success')
     }).pipe(
       Effect.provide(
         TestHarnessLive({

@@ -7,12 +7,15 @@ import type { Codec } from "../codec/codec"
 import type { ChatCompletionsRequest } from "../wire/chat-completions"
 import type { HttpConnectionFailure, StreamFailure } from "../errors/failure"
 import { executeHttpStream } from "../transport/stream"
+import type { ModelCapabilities, ImagePlaceholderConfig } from "./capabilities"
 import type { ModelSpec, ModelStreamResult } from "./model-spec"
 import type { BoundModel } from "./bound-model"
+import { normalizeVision } from "../prompt/normalize-vision"
 import { TraceListener, type AssembledToolCall, type ModelCallTrace } from "../trace"
 import type { FinishReason } from "../response/events"
 import type { ResponseUsage } from "../response/usage"
 import type { ConnectionError } from "../errors/model-error"
+import type { ProviderToolCallId, ToolCallId } from "../prompt/ids"
 
 // ---------------------------------------------------------------------------
 // Model.define — internal factory used by protocol namespaces
@@ -38,6 +41,7 @@ export interface ModelDefineConfig<
   readonly classifyStreamError: (failure: StreamFailure) => TStreamError
   readonly decodePayload: (raw: string) => Effect.Effect<TWireChunk, Error>
   readonly doneSignal?: string
+  readonly capabilities?: ModelCapabilities
 }
 
 function joinUrl(endpoint: string, path: string): string {
@@ -58,8 +62,10 @@ export function modelDefine<
   const spec: ModelSpec<TCallOptions, TConnectionError, TStreamError> = {
     modelId: config.modelId,
     endpoint: config.endpoint,
+    capabilities: config.capabilities,
 
-    bind: (args) => modelBind(spec, args.auth, args.defaults),
+    bind: (args) => modelBind(spec, args.auth, args.defaults, { imagePlaceholders: args.imagePlaceholders }),
+
 
     _execute: (
       auth: AuthApplicator,
@@ -91,9 +97,26 @@ export function modelDefine<
               config.codec.decode(wireStream, {
                 tools,
                 classifyStreamError: config.classifyStreamError,
+                generateToolCallId: options.generateToolCallId,
               }),
             ),
-            Effect.mapError(config.classifyConnectionError),
+            Effect.mapError((failure) => ({
+              classified: config.classifyConnectionError(failure),
+              raw: failure,
+            })),
+            Effect.tapError(({ classified, raw }) => {
+              const ce = classified as ConnectionError
+              return ce._tag === 'AuthFailed'
+                ? Effect.logError('[AuthDiagnostic] Connection classified as AuthFailed', {
+                    httpStatus: raw.status,
+                    responseBody: raw.body,
+                    classifiedMessage: ce.message,
+                    modelId: config.modelId,
+                    url,
+                  })
+                : Effect.void
+            }),
+            Effect.mapError(({ classified }) => classified),
           )
         }
 
@@ -104,7 +127,7 @@ export function modelDefine<
         // Mutable accumulators for trace assembly
         let reasoning = ""
         let text = ""
-        const toolCallMap = new Map<string, { id: string; name: string; args: Record<string, unknown> }>()
+        const toolCallMap = new Map<ToolCallId, { id: ToolCallId; providerToolCallId: ProviderToolCallId; name: string; args: Record<string, unknown> }>()
         let finishReason: FinishReason | null = null
         let usage: ResponseUsage | null = null
 
@@ -113,6 +136,7 @@ export function modelDefine<
             config.codec.decode(wireStream, {
               tools,
               classifyStreamError: config.classifyStreamError,
+              generateToolCallId: options.generateToolCallId,
             }),
           ),
           Effect.mapError((failure) => {
@@ -135,8 +159,21 @@ export function modelDefine<
               connectionError: connectionError as ConnectionError,
             }
             listener.onTrace(trace)
-            return connectionError
+            return { classified: connectionError, raw: failure }
           }),
+          Effect.tapError(({ classified, raw }) => {
+            const ce = classified as ConnectionError
+            return ce._tag === 'AuthFailed'
+              ? Effect.logError('[AuthDiagnostic] Connection classified as AuthFailed', {
+                  httpStatus: raw.status,
+                  responseBody: raw.body,
+                  classifiedMessage: ce.message,
+                  modelId: config.modelId,
+                  url,
+                })
+              : Effect.void
+          }),
+          Effect.mapError(({ classified }) => classified),
         )
 
         // Wrap the event stream to accumulate trace data
@@ -151,7 +188,7 @@ export function modelDefine<
                   text += event.text
                   break
                 case "tool_call_start":
-                  toolCallMap.set(event.toolCallId, { id: event.toolCallId, name: event.toolName, args: {} })
+                  toolCallMap.set(event.toolCallId, { id: event.toolCallId, providerToolCallId: event.providerToolCallId, name: event.toolName, args: {} })
                   break
                 case "tool_call_field_end": {
                   const tc = toolCallMap.get(event.toolCallId)
@@ -185,7 +222,7 @@ export function modelDefine<
           Stream.ensuring(
             Effect.sync(() => {
               const assembledToolCalls: AssembledToolCall[] = Array.from(toolCallMap.values()).map(
-                (tc) => ({ id: tc.id, name: tc.name, arguments: tc.args }),
+                (tc) => ({ id: tc.id, providerToolCallId: tc.providerToolCallId, name: tc.name, arguments: tc.args }),
               )
               const trace: ModelCallTrace = {
                 modelId: config.modelId,
@@ -231,12 +268,16 @@ export function modelBind<
   spec: ModelSpec<TCallOptions, TConnectionError, TStreamError>,
   auth: AuthApplicator,
   defaults?: Partial<TCallOptions>,
+  options?: { imagePlaceholders?: ImagePlaceholderConfig },
 ): BoundModel<TCallOptions, TConnectionError, TStreamError> {
   return {
     spec,
-    stream: (prompt, tools, options?) => {
-      const merged = { ...defaults, ...options } as TCallOptions
-      return spec._execute(auth, prompt, tools, merged)
+    stream: (prompt, tools, callOptions?) => {
+      const merged = { ...defaults, ...callOptions } as TCallOptions
+      const normalizedPrompt = (options?.imagePlaceholders?.enabled && spec.capabilities?.vision === false)
+        ? normalizeVision(prompt, options.imagePlaceholders.format)
+        : prompt
+      return spec._execute(auth, normalizedPrompt, tools, merged)
     },
   }
 }

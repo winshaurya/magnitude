@@ -8,7 +8,7 @@ import {
 } from '@magnitudedev/event-core'
 import type { AppEvent } from '../../events'
 import { AgentStatusProjection } from '../agent-status'
-import { WindowProjection, type ForkWindowState } from '../window'
+import { WindowProjection, type ForkWindowState } from '../../window'
 import { SubagentActivityProjection } from '../subagent-activity'
 import { UserPresenceProjection } from '../user-presence'
 import { OutboundMessagesProjection } from '../outbound-messages'

@@ -2,6 +2,8 @@ import { describe, expect, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { TestHarness, TestHarnessLive } from '../../src/test-harness/harness'
 import { windowToPrompt } from '../../src/prompts/window-to-prompt'
+import { createToolResultFormatter } from '@magnitudedev/harness'
+import { leaderToolkit } from '../../src/tools/toolkits'
 import { getRootMemory, inboxMessages, lastInboxMessage, getRenderedUserText } from './helpers'
 
 describe('memory/timeline-events', () => {
@@ -162,7 +164,7 @@ describe('memory/timeline-events', () => {
         expect(prev.timeline.some(t => t.kind === 'observation')).toBe(false)
       }
 
-      const prompt = windowToPrompt(memory, '', 'UTC', true)
+      const prompt = windowToPrompt(memory, '', 'UTC', { agents: new Map() }, createToolResultFormatter(leaderToolkit))
       const rendered = prompt.messages
         .filter(m => m._tag === 'UserMessage')
         .flatMap(m => m.parts)

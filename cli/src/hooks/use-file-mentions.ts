@@ -202,13 +202,13 @@ function detectQuery(inputText: string, cursorPosition: number): string | null {
   return match[1] ?? ''
 }
 
-function toFileItem(pathValue: string, workspacePath: string): MentionFileItem {
+function toFileItem(pathValue: string, scratchpadPath: string): MentionFileItem {
   const ext = getExt(pathValue)
   const contentType: MentionFileItem['contentType'] = IMAGE_EXTENSIONS.has(ext) ? 'image' : 'text'
   let warning = false
   try {
-    const candidates = workspacePath
-      ? [path.resolve(workspacePath, pathValue), pathValue]
+    const candidates = scratchpadPath
+      ? [path.resolve(scratchpadPath, pathValue), pathValue]
       : [pathValue]
     let size = 0
     for (const candidate of candidates) {
@@ -271,9 +271,9 @@ export function useFileMentions(
     return () => { cancelled = true }
   }, [isOpen])
 
-  const workspacePath = process.env.M || process.env.MAGNITUDE_WORKSPACE_PATH
-  if (!workspacePath) {
-    console.error('[use-file-mentions] Missing workspace path env var (M or MAGNITUDE_WORKSPACE_PATH)')
+  const scratchpadPath = process.env.M || process.env.MAGNITUDE_SCRATCHPAD_PATH
+  if (!scratchpadPath) {
+    console.error('[use-file-mentions] Missing scratchpad path env var (M or MAGNITUDE_SCRATCHPAD_PATH)')
   }
 
   const { items, recentItems, overflowCount } = useMemo(() => {
@@ -281,12 +281,12 @@ export function useFileMentions(
 
     const directories = collectDirectories(indexedFiles)
     const allCandidates: MentionFileItem[] = [
-      ...indexedFiles.map((filePath) => toFileItem(filePath, workspacePath!)),
+      ...indexedFiles.map((filePath) => toFileItem(filePath, scratchpadPath!)),
       ...directories.map(toDirectoryItem),
     ]
 
     if (!queryLower) {
-      const recent = recentFiles.map((filePath) => toFileItem(filePath, workspacePath!))
+      const recent = recentFiles.map((filePath) => toFileItem(filePath, scratchpadPath!))
       const recentSet = new Set(recent.map((item) => item.path))
       const rest = allCandidates
         .filter((item) => !(item.kind === 'file' && recentSet.has(item.path)))
@@ -315,7 +315,7 @@ export function useFileMentions(
       recentItems: [],
       overflowCount: Math.max(0, ranked.length - MAX_VISIBLE_RESULTS),
     }
-  }, [isOpen, indexedFiles, recentFiles, queryLower, workspacePath])
+  }, [isOpen, indexedFiles, recentFiles, queryLower, scratchpadPath])
 
   const prevSignatureRef = useRef<string>('')
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { isEnvFlagOn } from '@magnitudedev/magnitude-client'
 import { useStorage } from '../providers/storage-provider'
 
 const PROVIDER_ID = 'magnitude'
@@ -23,7 +24,7 @@ interface Resolved {
 }
 
 async function resolveAuth(getStoredKey: () => Promise<string | undefined>): Promise<Resolved> {
-  const useLocal = !!process.env.MAGNITUDE_USE_LOCAL
+  const useLocal = isEnvFlagOn(process.env.MAGNITUDE_USE_LOCAL)
 
   // In local mode, always prefer the local env var over stored config
   if (useLocal) {

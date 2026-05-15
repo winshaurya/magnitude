@@ -76,11 +76,6 @@ afterEach(() => {
 const noop = () => {}
 const idleCompaction: CompactionState = {
   _tag: 'idle',
-  tokenEstimate: 0,
-  lastActualInputTokens: null,
-  hasCompletedTurn: false,
-  modelId: null,
-  providerId: null,
   contextLimitBlocked: false,
   shouldCompact: false,
 }
@@ -102,7 +97,7 @@ function propsWithDisplay(display: DisplayState) {
     onForkExpand: noop,
     modelSummary: { role: 'role', model: 'model' },
     contextHardCap: null,
-    workspacePath: '/tmp',
+    scratchpadPath: '/tmp',
     projectRoot: '/tmp',
     subscribeForkDisplay: (_forkId: string, cb: (state: DisplayState) => void) => {
       cb(display)
@@ -112,7 +107,11 @@ function propsWithDisplay(display: DisplayState) {
       cb(idleCompaction)
       return noop
     },
-    subscribeForkToolState: (_forkId: string, cb: (state: any) => void) => {
+    subscribeForkWindow: (_forkId: string, cb: (state: any) => void) => {
+      cb({ tokenEstimate: 0, messageTokens: 0, systemPromptTokens: 0, lastAnchoredTotal: null, lastAnchoredMessageTokens: null, messages: [], queuedTimeline: [], currentTurnId: null, currentChainId: null, pendingPresenceText: null, nextQueueSeq: 0 })
+      return noop
+    },
+    subscribeForkHarnessState: (_forkId: string, cb: (state: any) => void) => {
       cb({ toolHandles: {} })
       return noop
     },

@@ -9,26 +9,30 @@
  *  - createHarnessAdapter to translate HarnessEvent → AppEvent
  */
 
-import { Effect, Stream, Layer } from 'effect'
-import { Worker, AmbientServiceTag } from '@magnitudedev/event-core'
+import { Effect, Layer, Stream } from 'effect'
+import { Worker, AmbientServiceTag, Fork } from '@magnitudedev/event-core'
 import { logger } from '@magnitudedev/logger'
-import { createHarness, type ExecuteHookContext, type InterceptorDecision } from '@magnitudedev/harness'
-import type { MagnitudeConnectionError, MagnitudeStreamError } from '@magnitudedev/magnitude-client'
+import { createHarness } from '@magnitudedev/harness'
+import type { MagnitudeConnectionError } from '@magnitudedev/magnitude-client'
 import { renderToolDocs } from '../prompts/render-tool-docs'
 
-import type { AppEvent, TurnOutcome } from '../events'
-import type { TurnOutcome as HarnessTurnOutcome } from '@magnitudedev/harness'
+import type { AppEvent } from '../events'
+import { mapConnectionErrorToOutcome, mapStreamErrorToOutcome } from '../errors'
 
-import { WindowProjection } from '../projections/window'
+import { WindowProjection } from '../window'
 import { SessionContextProjection } from '../projections/session-context'
 import { AgentStatusProjection } from '../projections/agent-status'
+import { HarnessStateProjection } from '../projections/harness-state'
+import { TurnProjection } from '../projections/turn'
+import { MAX_RETRIES, TERMINAL_RETRY_EXHAUSTED_MESSAGE } from '../util/retry-backoff'
 
 import { AgentModelResolver } from '../model/model-resolver'
 import { getAgentDefinition, getForkInfo } from '../agents/registry'
 import { getToolkitForRole } from '../tools/toolkits'
 import { createHarnessAdapter } from '../execution/harness-adapter'
 import { buildSystemPrompt } from '../prompts/system-prompt-builder'
-import { windowToPrompt } from '../prompts/window-to-prompt'
+import { windowToPrompt, createAgentFormatter } from '../prompts/window-to-prompt'
+import { createToolResultFormatter } from '@magnitudedev/harness'
 
 import { ExecutionManager } from '../execution/types'
 import { SkillsAmbient } from '../ambient/skills-ambient'
@@ -45,61 +49,12 @@ function toObservationPart(part: ObservablePart): ObservationPart {
   }
 }
 import { isToolKey, type ToolKey } from '../tools/toolkits'
-import { persistResult } from '../runtime/result-persistence'
-import { PolicyContextProviderTag } from '../agents/types'
-import { handleMessageDirective } from '../tasks/operations/message'
-import { Fork } from '@magnitudedev/event-core'
+import { resolveImageDescriptions } from '../util/describe-image'
 
-import * as path from 'path'
+import { buildStandardHooks } from '../execution/harness-hooks'
+import { TurnContextTag } from '../engine/turn-context'
 
 const { ForkContext } = Fork
-
-// =============================================================================
-// Error Mapping
-// =============================================================================
-
-function mapConnectionErrorToOutcome(err: MagnitudeConnectionError): TurnOutcome {
-  switch (err._tag) {
-    case 'SubscriptionRequired':
-      return {
-        _tag: 'ProviderNotReady',
-        detail: { _tag: 'MagnitudeBilling', reason: { _tag: 'SubscriptionRequired', message: err.message } },
-      }
-    case 'TrialExpired':
-      return {
-        _tag: 'ProviderNotReady',
-        detail: { _tag: 'MagnitudeBilling', reason: { _tag: 'TrialExpired', message: err.message } },
-      }
-    case 'MagnitudeUsageLimitExceeded':
-      return {
-        _tag: 'ProviderNotReady',
-        detail: { _tag: 'MagnitudeBilling', reason: { _tag: 'UsageLimitExceeded', message: err.message } },
-      }
-    case 'ModelNotGrammarCompatible':
-      return { _tag: 'UnexpectedError', message: err.message, detail: { _tag: 'ProviderDefect' } }
-    case 'RoleNotFound':
-      return { _tag: 'UnexpectedError', message: err.message, detail: { _tag: 'ProviderDefect' } }
-    case 'AuthFailed':
-      return {
-        _tag: 'ProviderNotReady',
-        detail: { _tag: 'AuthFailed', providerId: 'magnitude', providerName: 'Magnitude' },
-      }
-    case 'RateLimited':
-      return { _tag: 'ConnectionFailure', detail: { _tag: 'TransportError', httpStatus: err.status } }
-    case 'UsageLimitExceeded':
-      return { _tag: 'ConnectionFailure', detail: { _tag: 'ProviderError', httpStatus: err.status } }
-    case 'ContextLimitExceeded':
-      return { _tag: 'ContextWindowExceeded' }
-    case 'InvalidRequest':
-      return { _tag: 'UnexpectedError', message: err.message, detail: { _tag: 'ProviderDefect' } }
-    case 'TransportError':
-      return { _tag: 'ConnectionFailure', detail: { _tag: 'TransportError', httpStatus: err.status ?? undefined } }
-  }
-}
-
-function mapStreamErrorToOutcome(err: MagnitudeStreamError): HarnessTurnOutcome {
-  return { _tag: 'EngineDefect', message: `Stream error: ${err.message ?? 'unknown'}` }
-}
 
 // =============================================================================
 // Worker
@@ -134,10 +89,7 @@ export const Cortex = Worker.defineForked<AppEvent>()({
         const sessionCtx   = yield* read(SessionContextProjection)
         const agentState   = yield* read(AgentStatusProjection)
         const windowState  = yield* read(WindowProjection, forkId)
-        // TODO(Phase 3E): Pass replay state to harness for crash recovery.
-        // ReplayProjection uses turn-engine EngineState; harness uses its own EngineState.
-        // Needs type migration before it can be wired through.
-        // const replayState = yield* read(ReplayProjection, forkId)
+        const harnessState = yield* read(HarnessStateProjection, forkId)
 
         const forkInfo = getForkInfo(agentState, forkId)
         if (!forkInfo) return
@@ -183,24 +135,33 @@ export const Cortex = Worker.defineForked<AppEvent>()({
           return
         }
 
+        const turnContextLayer = Layer.succeed(TurnContextTag, { turnId, forkId })
+        const turnLayer = Layer.merge(forkLayer, turnContextLayer)
+
         // ──────────────────────────────────────────────────────────────────────
         // 5. Build system prompt
         // ──────────────────────────────────────────────────────────────────────
         const ambientService = yield* AmbientServiceTag
         const skills = ambientService.getValue(SkillsAmbient)
 
-        const workspacePath = sessionCtx.context?.workspacePath ?? process.cwd()
+        const scratchpadPath = sessionCtx.context?.scratchpadPath ?? process.cwd()
+
+        // Pass engine state for crash recovery — allows the harness to skip
+        // tools that already executed before the process crashed.
+        const engineState = harnessState?.engine
+        const hasRecoverableState = engineState && engineState.toolOutcomes.size > 0
 
         const harness = createHarness({
           model: agentModel.model,
           toolkit,
           mapStreamError: mapStreamErrorToOutcome,
-          layer: forkLayer,
-          hooks: buildHarnessHooks({
+          layer: turnLayer,
+          initialState: hasRecoverableState ? engineState : undefined,
+          hooks: buildStandardHooks({
             forkId,
             turnId,
             agentDef,
-            workspacePath,
+            scratchpadPath,
           }),
         })
 
@@ -220,8 +181,14 @@ export const Cortex = Worker.defineForked<AppEvent>()({
         // 6. Build prompt from memory
         // ──────────────────────────────────────────────────────────────────────
         const timezone = sessionCtx.context?.timezone ?? null
-        const supportsVision = agentModel.profile.capabilities.vision
-        const prompt = windowToPrompt(windowState, systemPrompt, timezone, supportsVision)
+        const formatter = createAgentFormatter(createToolResultFormatter(toolkit))
+        const rawPrompt = windowToPrompt(windowState, systemPrompt, timezone, agentState, formatter)
+
+        // Resolve image descriptions — replaces ImageParts with text descriptions
+        // from the vision preprocessing registry (started on image upload/paste).
+        const prompt = agentModel.profile.capabilities.vision
+          ? rawPrompt
+          : yield* Effect.promise(() => resolveImageDescriptions(rawPrompt))
 
         // ──────────────────────────────────────────────────────────────────────
         // 7. Build adapter
@@ -247,15 +214,7 @@ export const Cortex = Worker.defineForked<AppEvent>()({
           chainId,
           roleId,
           defaultProseDest,
-          triggeredByUser: chainId === turnId,
           publish,
-          handleTaskDirective: (directive) =>
-            handleMessageDirective(directive, {
-              forkId,
-              timestamp: Date.now(),
-              graph: { tasks: new Map() },
-              skills,
-            }),
           identicalResponseTracker: null,
           resolveToolKey: (toolName: string) => toolNameToKey.get(toolName),
         })
@@ -266,10 +225,28 @@ export const Cortex = Worker.defineForked<AppEvent>()({
         const liveTurn = yield* harness.runTurn(prompt).pipe(
           Effect.catchAll((err: MagnitudeConnectionError) => Effect.gen(function* () {
             logger.error({ forkId, turnId, err }, '[Cortex] Pre-stream connection error')
+            const classified = mapConnectionErrorToOutcome(err)
+
+            // If this is a connection failure and we've already retried MAX times,
+            // terminate the chain with a friendly UnexpectedError instead of
+            // letting the projection schedule another retry.
+            let outcome = classified
+            if (classified._tag === 'ConnectionFailure') {
+              const turnFork = yield* read(TurnProjection, forkId)
+              const retryCount = turnFork?.connectionRetryCount ?? 0
+              if (retryCount >= MAX_RETRIES) {
+                outcome = {
+                  _tag: 'UnexpectedError',
+                  message: TERMINAL_RETRY_EXHAUSTED_MESSAGE,
+                  detail: { _tag: 'Unknown' },
+                }
+              }
+            }
+
             yield* publish({
               type: 'turn_outcome', forkId, turnId, chainId,
               strategyId: 'native',
-              outcome: mapConnectionErrorToOutcome(err),
+              outcome,
               inputTokens: null, outputTokens: null,
               cacheReadTokens: null, cacheWriteTokens: null,
               providerId: 'magnitude', modelId: agentModel.modelId,
@@ -323,41 +300,4 @@ export const Cortex = Worker.defineForked<AppEvent>()({
   },
 })
 
-// =============================================================================
-// Harness Hooks
-// =============================================================================
 
-function buildHarnessHooks(ctx: {
-  readonly forkId: string | null
-  readonly turnId: string
-  readonly agentDef: ReturnType<typeof getAgentDefinition>
-  readonly workspacePath: string
-}): import('@magnitudedev/harness').HarnessHooks<PolicyContextProviderTag> {
-  const { forkId, turnId, agentDef, workspacePath } = ctx
-  const resultsDir = path.join(workspacePath, 'results')
-
-  return {
-    beforeExecute: (hookCtx: ExecuteHookContext) =>
-      Effect.gen(function* () {
-        const policyCtxProvider = yield* PolicyContextProviderTag
-        const policyContext = yield* policyCtxProvider.get
-
-        for (const rule of agentDef.policy) {
-          const decision = yield* rule({ ...hookCtx, policyContext })
-          if (decision !== null) return decision
-        }
-        return { _tag: 'Proceed' as const } satisfies InterceptorDecision
-      }),
-
-    afterExecute: (hookCtx: ExecuteHookContext & { readonly result: import('@magnitudedev/harness').ToolResult }) =>
-      Effect.gen(function* () {
-        if (hookCtx.result._tag === 'Success') {
-          yield* persistResult(hookCtx.result.output, turnId, hookCtx.toolCallId, resultsDir).pipe(
-            Effect.catchAll((e) => Effect.gen(function* () {
-              logger.warn({ forkId, turnId, toolCallId: hookCtx.toolCallId, e }, '[Cortex] persistResult failed')
-            })),
-          )
-        }
-      }),
-  }
-}

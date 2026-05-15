@@ -8,7 +8,7 @@
 
 
 import type { UserPart } from './content'
-import type { ImageMediaType } from '@magnitudedev/ai'
+import type { ImageMediaType, ProviderToolCallId } from '@magnitudedev/ai'
 import type { ToolLifecycleEvent } from '@magnitudedev/harness'
 import type { ValidationIssue, StreamingPartial } from '@magnitudedev/ai'
 import type { Schema } from 'effect'
@@ -19,6 +19,9 @@ export type ObservationPart =
 import type { Skill } from '@magnitudedev/skills'
 import type { RoleId } from '@magnitudedev/roles'
 import type { TaskAssignee } from './tasks/types'
+import type { ErrorPresentation } from './errors/present'
+import type { CompletedTurn } from './window/types'
+import type { CompactResult } from './compaction/context'
 
 
 export type Attachment = ImageAttachment | MentionAttachment
@@ -70,7 +73,7 @@ export interface GitContext {
 
 export interface SessionContext {
   readonly cwd: string
-  readonly workspacePath: string
+  readonly scratchpadPath: string
   readonly platform: 'macos' | 'linux' | 'windows'
   readonly shell: string
   readonly timezone: string
@@ -217,26 +220,26 @@ export type TurnFeedback =
 export interface ParseFailureEvent {
   readonly _tag: 'ToolInputDecodeFailure'
   readonly toolCallId: string
+  readonly providerToolCallId: ProviderToolCallId
   readonly toolName: string
   readonly issue: ValidationIssue
-  readonly inputSchema: Schema.Schema.Any
+  readonly inputSchema: Schema.Schema.AnyNoContext
   readonly receivedInput: StreamingPartial<any>
 }
 
-export type MagnitudeBillingReason =
-  | { readonly _tag: 'SubscriptionRequired'; readonly message: string }
-  | { readonly _tag: 'TrialExpired'; readonly message: string }
-  | { readonly _tag: 'UsageLimitExceeded'; readonly message: string }
-
 export type ProviderNotReadyDetail =
-  | { readonly _tag: 'NotConfigured' }
-  | { readonly _tag: 'ProviderDisconnected'; readonly providerId: string; readonly providerName: string }
-  | { readonly _tag: 'AuthFailed'; readonly providerId: string; readonly providerName: string }
-  | { readonly _tag: 'MagnitudeBilling'; readonly reason: MagnitudeBillingReason }
+  | { readonly _tag: 'AuthFailed' }
+  | { readonly _tag: 'OutOfSync' }
+  | {
+      readonly _tag: 'InsufficientCredits'
+      readonly message: string
+      readonly balanceCents: number
+      readonly requiredCents: number
+    }
 
 export type ConnectionFailureDetail =
-  | { readonly _tag: 'ProviderError'; readonly httpStatus: number }
-  | { readonly _tag: 'TransportError'; readonly httpStatus?: number }
+  | { readonly _tag: 'ProviderError'; readonly httpStatus: number; readonly retryAfterMs?: number }
+  | { readonly _tag: 'TransportError'; readonly httpStatus?: number; readonly retryAfterMs?: number }
   | { readonly _tag: 'StreamError' }
 
 export type CancelledReason =
@@ -259,6 +262,9 @@ export type UnexpectedErrorDetail =
 export type TurnOutcome =
   | { readonly _tag: 'Completed'; readonly completion: TurnCompletion }
   | { readonly _tag: 'ParseFailure'; readonly error: ParseFailureEvent }
+  | { readonly _tag: 'ToolInputValidationFailure'; readonly toolCallId: string; readonly providerToolCallId: string; readonly toolName: string; readonly toolKey: string; readonly issue: ValidationIssue }
+  | { readonly _tag: 'ToolExecutionError'; readonly toolCallId: string; readonly providerToolCallId: string; readonly toolName: string; readonly toolKey: string; readonly error: { readonly message: string } }
+  | { readonly _tag: 'GateRejected'; readonly toolCallId: string; readonly providerToolCallId: string; readonly toolName: string }
   | { readonly _tag: 'ProviderNotReady'; readonly detail: ProviderNotReadyDetail }
   | { readonly _tag: 'ConnectionFailure'; readonly detail: ConnectionFailureDetail }
   | { readonly _tag: 'ContextWindowExceeded' }
@@ -276,6 +282,9 @@ export function outcomeWillChainContinue(outcome: TurnOutcome): boolean {
   return (
     (outcome._tag === 'Completed' && outcome.completion.toolCallsCount > 0)
     || outcome._tag === 'ParseFailure'
+    || outcome._tag === 'ToolInputValidationFailure'
+    || outcome._tag === 'ToolExecutionError'
+    || outcome._tag === 'GateRejected'
     || outcome._tag === 'ConnectionFailure'
     || outcome._tag === 'ContextWindowExceeded'
   )
@@ -288,7 +297,7 @@ export function outcomeWillChainContinue(outcome: TurnOutcome): boolean {
 export type MessageDestination =
   | { readonly kind: 'user' }
   | { readonly kind: 'parent' }
-  | { readonly kind: 'worker'; readonly taskId: string }
+  | { readonly kind: 'worker'; readonly agentId: string }
 
 export interface MessageStart {
   readonly type: 'message_start'
@@ -364,6 +373,7 @@ export interface ToolEvent {
   readonly forkId: string | null
   readonly turnId: string
   readonly toolCallId: string
+  readonly providerToolCallId: ProviderToolCallId
   readonly toolKey: ToolKey
   readonly event: ToolLifecycleEvent
 }
@@ -375,7 +385,7 @@ export type ToolDisplay =
 export type ToolResult =
   | { readonly status: 'success'; readonly output: unknown; readonly display?: ToolDisplay }
   | { readonly status: 'error'; readonly message: string }
-  | { readonly status: 'rejected'; readonly message: string; readonly reason?: string }
+  | { readonly status: 'denied'; readonly denial: string }
   | { readonly status: 'interrupted' }
 
 export type ToolResultStatus = ToolResult['status']
@@ -441,6 +451,15 @@ export interface AgentKilled {
   readonly parentForkId: string | null
   readonly agentId: string
   readonly reason: string
+}
+
+/** Agent reassigned to a different task */
+export interface AgentTaskChanged {
+  readonly type: 'agent_task_changed'
+  readonly forkId: string
+  readonly agentId: string
+  readonly oldTaskId: string
+  readonly newTaskId: string
 }
 
 /** Active subagent explicitly killed by user from subagent tab close confirmation */
@@ -530,25 +549,26 @@ export interface CompactionStarted {
   readonly compactedMessageCount: number  // Number of messages to compact (frozen at trigger time)
 }
 
-/** Compaction BAML summarization complete, ready to finalize */
-export interface CompactionReady {
-  readonly type: 'compaction_ready'
-  readonly forkId: string | null
-  readonly summary: string
-  readonly compactedMessageCount: number
-  readonly originalTokenEstimate: number  // Token estimate of compacted messages (for tokensSaved calc)
-  readonly refreshedContext: SessionContext | null
-}
+/** Compaction outcome — discriminated by isFallback */
+export type CompactionOutcome =
+  | { readonly isFallback: false; readonly compactResult: CompactResult }
+  | { readonly isFallback: true }
 
-/** Compaction completed - summary replaces old messages */
-export interface CompactionCompleted {
-  readonly type: 'compaction_completed'
+/** Compaction BAML summarization complete, ready to finalize */
+export type CompactionPrepared = {
+  readonly type: 'compaction_prepared'
   readonly forkId: string | null
-  readonly summary: string
+  readonly turn: CompletedTurn
   readonly compactedMessageCount: number
-  readonly tokensSaved: number
-  readonly preservedVariables: readonly string[]
-  readonly refreshedContext: SessionContext | null  // Fresh session context to replace stale original
+  readonly inputTokens: number | null
+  readonly outputTokens: number | null
+  readonly refreshedContext: SessionContext | null
+} & CompactionOutcome
+
+/** Compaction injected — minimal signal that compaction results should be applied to the window */
+export interface CompactionInjected {
+  readonly type: 'compaction_injected'
+  readonly forkId: string | null
 }
 
 /** Compaction failed */
@@ -556,6 +576,7 @@ export interface CompactionFailed {
   readonly type: 'compaction_failed'
   readonly forkId: string | null
   readonly error: string
+  readonly presentation: ErrorPresentation | null
 }
 
 /** Context limit hit — LLM returned a context-length error */
@@ -648,8 +669,8 @@ export type AppEvent =
   | Interrupt
   | SoftInterrupt
   | CompactionStarted
-  | CompactionReady
-  | CompactionCompleted
+  | CompactionPrepared
+  | CompactionInjected
   | CompactionFailed
   | ContextLimitHit
   | ToolApproved
@@ -662,8 +683,8 @@ export type AppEvent =
   // Agent events
   | AgentCreated
   | AgentKilled
+  | AgentTaskChanged
   | SubagentUserKilled
   | SubagentIdleClosed
   | UserReturnConfirmed
   | SkillActivated
-

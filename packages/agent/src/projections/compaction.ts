@@ -1,38 +1,28 @@
-
 /**
  * CompactionProjection (Forked)
  *
- * Owns compaction-related state per fork as an FSM with ambient fields.
+ * Pure FSM + policy. Token budget tracking lives in WindowProjection.
+ * This projection owns the compaction lifecycle state and derives
+ * shouldCompact / contextLimitBlocked from Window's tokenEstimate.
  */
 
 import { Data } from 'effect'
 import { Projection, Signal, FSM } from '@magnitudedev/event-core'
+import type { CompletedTurn } from '../window/types'
+import type { CompactResult } from '../compaction/context'
 const { defineFSM } = FSM
 
-import type { AppEvent, SessionContext } from '../events'
+import type { AppEvent, SessionContext, CompactionOutcome } from '../events'
+import { compactionSignals } from './compaction-signals'
 import { AgentRoutingProjection } from './agent-routing'
 import { AgentStatusProjection, type AgentStatusState } from './agent-status'
-import { UserMessageResolutionProjection } from './user-message-resolution'
-import { CanonicalTurnProjection } from './canonical-turn'
+import { WindowProjection } from '../window'
 import { ConfigAmbient, getRoleConfig, type RoleConfig, type ConfigState } from '../ambient/config-ambient'
-import { SkillsAmbient } from '../ambient/skills-ambient'
-import { ToolkitAmbient } from '../ambient/toolkit-ambient'
-import type { Skill } from '@magnitudedev/skills'
-
-import { estimateContentTokens, estimateCompletedTurn, estimateText } from '../util/token-estimation'
-
-import { isRoleId, type RoleId } from '../agents/role-validation'
-import { getAgentDefinition, getForkInfo } from '../agents/registry'
-import { buildSessionContextContent } from '../prompts/session-context'
-import { buildSystemPrompt } from '../prompts/system-prompt-builder'
-import { renderToolDocs } from '../prompts/render-tool-docs'
-import { getEffectiveToolkit } from '../tools/toolkits'
-import type { UserPart } from '@magnitudedev/ai'
-import type { CompletedTurn } from '../inbox/types'
+import { getForkInfo } from '../agents/registry'
 
 
 // =============================================================================
-// Context Limit Helpers
+// Policy Helpers
 // =============================================================================
 
 function isCompactionBlocking(tag: CompactionState['_tag']): boolean {
@@ -47,7 +37,6 @@ function deriveShouldCompact(
   return tag === 'idle' && tokenEstimate > limits.softCap
 }
 
-/** Compute whether turns should be blocked due to context limit */
 function computeContextLimitBlocked(
   tag: CompactionState['_tag'],
   tokenEstimate: number,
@@ -57,42 +46,11 @@ function computeContextLimitBlocked(
 }
 
 
-
-const systemPromptTokenCache = new Map<string, number>()
-
-function estimateSystemPromptTokens(roleId: RoleId, skills: Map<string, Skill>, configState: ConfigState): number {
-  const cacheKey = roleId
-  const cached = systemPromptTokenCache.get(cacheKey)
-  if (cached !== undefined) return cached
-  
-  const agentDef = getAgentDefinition(roleId)
-  const toolkit = getEffectiveToolkit(roleId, configState)
-  const toolDefs = toolkit.keys.map(key => toolkit.entries[key].tool.definition)
-  const toolDocs = toolDefs.length > 0 ? renderToolDocs(toolDefs) : ''
-  const prompt = buildSystemPrompt({ roleDef: agentDef, skills, lenses: [], toolDocs })
-  
-  const tokens = estimateText(prompt)
-  systemPromptTokenCache.set(cacheKey, tokens)
-  return tokens
-}
-
-function toRoleId(role: string): RoleId | null {
-  if (isRoleId(role)) {
-    return role
-  }
-  return null
-}
-
 // =============================================================================
 // FSM State
 // =============================================================================
 
 interface AmbientCompactionFields {
-  readonly tokenEstimate: number
-  readonly lastActualInputTokens: number | null
-  readonly hasCompletedTurn: boolean
-  readonly modelId: string | null
-  readonly providerId: string | null
   readonly contextLimitBlocked: boolean
   readonly shouldCompact: boolean
 }
@@ -103,22 +61,24 @@ export class Compacting extends Data.TaggedClass('compacting')<AmbientCompaction
   readonly compactedMessageCount: number
 }> {}
 
-export class PendingFinalization extends Data.TaggedClass('pendingFinalization')<AmbientCompactionFields & {
-  readonly summary: string
+export class PendingInjection extends Data.TaggedClass('pendingInjection')<AmbientCompactionFields & {
+  readonly turn: CompletedTurn
+  readonly compactionOutcome: CompactionOutcome
   readonly compactedMessageCount: number
-  readonly originalTokenEstimate: number
+  readonly inputTokens: number | null
+  readonly outputTokens: number | null
   readonly refreshedContext: SessionContext | null
 }> {}
 
 export const CompactionLifecycle = defineFSM(
-  { idle: CompactionIdle, compacting: Compacting, pendingFinalization: PendingFinalization },
-  { idle: ['compacting'], compacting: ['pendingFinalization', 'idle'], pendingFinalization: ['idle'] }
+  { idle: CompactionIdle, compacting: Compacting, pendingInjection: PendingInjection },
+  { idle: ['compacting'], compacting: ['pendingInjection', 'idle'], pendingInjection: ['idle'] }
 )
 
 export type CompactionState =
   | CompactionIdle
   | Compacting
-  | PendingFinalization
+  | PendingInjection
 
 function emitLifecycleSignals(
   oldState: CompactionState,
@@ -164,16 +124,22 @@ function getForkConfig(
   return getRoleConfig(configState, roleId)
 }
 
-function recomputeOperationalFields(
+function recomputePolicy(
   fork: CompactionState,
+  tokenEstimate: number,
   limits: RoleConfig,
-  updates: Partial<AmbientCompactionFields> = {}
 ): CompactionState {
-  const tokenEstimate = updates.tokenEstimate ?? fork.tokenEstimate
+  console.log('[COMPACTION] recomputePolicy:', { _tag: fork._tag, tokenEstimate, softCap: limits.softCap, hardCap: limits.hardCap })
+  // During active compaction, preserve contextLimitBlocked so compaction_failed
+  // can determine retry intent. isCompactionBlocking(_tag) governs system
+  // blocking during compaction; contextLimitBlocked is only actionable when idle.
+  const contextLimitBlocked = fork._tag === 'idle'
+    ? computeContextLimitBlocked(fork._tag, tokenEstimate, limits)
+    : fork.contextLimitBlocked
+
   return withAmbient(fork, {
-    ...updates,
     shouldCompact: deriveShouldCompact(fork._tag, tokenEstimate, limits),
-    contextLimitBlocked: computeContextLimitBlocked(fork._tag, tokenEstimate, limits),
+    contextLimitBlocked,
   })
 }
 
@@ -184,133 +150,76 @@ function recomputeOperationalFields(
 export const CompactionProjection = Projection.defineForked<AppEvent, CompactionState>()({
   name: 'Compaction',
 
-  reads: [AgentRoutingProjection, AgentStatusProjection, UserMessageResolutionProjection, CanonicalTurnProjection] as const,
-  ambients: [ConfigAmbient, SkillsAmbient, ToolkitAmbient] as const,
+  reads: [AgentRoutingProjection, AgentStatusProjection, WindowProjection] as const,
+  ambients: [ConfigAmbient] as const,
 
-  signals: {
-    shouldCompactChanged: Signal.create<{ forkId: string | null; shouldCompact: boolean }>('Compaction/shouldCompactChanged'),
-    compactionBlockingChanged: Signal.create<{ forkId: string | null; blocking: boolean }>('Compaction/compactionBlockingChanged'),
-    contextLimitBlockedChanged: Signal.create<{ forkId: string | null; blocked: boolean }>('Compaction/contextLimitBlockedChanged'),
-  },
+  signals: compactionSignals,
 
   initialFork: new CompactionIdle({
-    tokenEstimate: 0,
-    lastActualInputTokens: null,
-    hasCompletedTurn: false,
-    modelId: null,
-    providerId: null,
     contextLimitBlocked: false,
     shouldCompact: false,
   }),
 
   eventHandlers: {
-    session_initialized: ({ event, fork, emit, ambient, read }) => {
-      const content = buildSessionContextContent(event.context)
-      const contentTokens = estimateContentTokens(content)
-      const skills = ambient.get(SkillsAmbient)
-      const configState = ambient.get(ConfigAmbient)
-      const tokenEstimate = estimateSystemPromptTokens('leader', skills, configState) + contentTokens
-      const agentStatus = read(AgentStatusProjection)
-      const limits = getForkConfig(configState, agentStatus, event.forkId)
-      if (!limits) return fork
-      const nextState = recomputeOperationalFields(fork, limits, {
-        tokenEstimate,
-      })
-
-      emitLifecycleSignals(fork, nextState, event.forkId, emit)
-      return nextState
-    },
-
-    turn_outcome: ({ event, fork, emit, ambient, read }) => {
-      const configState = ambient.get(ConfigAmbient)
-      const agentStatus = read(AgentStatusProjection)
-      const limits = getForkConfig(configState, agentStatus, event.forkId)
-      if (!limits) return fork
-
-      if (event.outcome._tag === 'UnexpectedError') {
-        const tokenEstimate = fork.tokenEstimate + estimateContentTokens(event.outcome.message)
-        const nextState = recomputeOperationalFields(fork, limits, {
-          tokenEstimate,
-        })
-
-        emitLifecycleSignals(fork, nextState, event.forkId, emit)
-        return nextState
-      }
-
-      let tokenEstimate: number
-
-      if (event.inputTokens !== null) {
-        // Tier 1: actual API usage — this IS the total prompt size, no additive correction
-        tokenEstimate = event.inputTokens
-      } else {
-        // Tier 3: heuristic fallback — add estimated turn cost to running total
-        const canonical = read(CanonicalTurnProjection)
-        const turnCost = canonical.lastCompleted?.turnId === event.turnId
-          ? estimateCompletedTurn(canonical.lastCompleted)
-          : 0
-        tokenEstimate = fork.tokenEstimate + turnCost
-      }
-
-      const nextState = recomputeOperationalFields(fork, limits, {
-        tokenEstimate,
-        lastActualInputTokens: event.inputTokens ?? fork.lastActualInputTokens,
-        hasCompletedTurn: true,
-        modelId: event.modelId ?? fork.modelId,
-        providerId: event.providerId ?? fork.providerId,
-      })
-
-      emitLifecycleSignals(fork, nextState, event.forkId, emit)
-      return nextState
-    },
-
-    compaction_started: ({ event, fork, emit, ambient, read }) => {
+    compaction_started: ({ event, fork, emit }) => {
       if (fork._tag !== 'idle') return fork
 
-      const configState = ambient.get(ConfigAmbient)
-      const agentStatus = read(AgentStatusProjection)
-      const limits = getForkConfig(configState, agentStatus, event.forkId)
-      if (!limits) return fork
+      // Preserve contextLimitBlocked through the transition so compaction_failed
+      // can determine whether retry is needed. During compaction, isCompactionBlocking(_tag)
+      // governs system blocking — contextLimitBlocked is only actionable when idle.
       const nextState = CompactionLifecycle.transition(fork, 'compacting', {
         compactedMessageCount: event.compactedMessageCount,
         shouldCompact: false,
-        contextLimitBlocked: computeContextLimitBlocked('compacting', fork.tokenEstimate, limits),
+        contextLimitBlocked: fork.contextLimitBlocked,
       })
 
       emitLifecycleSignals(fork, nextState, event.forkId, emit)
       return nextState
     },
 
-    compaction_ready: ({ event, fork, emit, ambient, read }) => {
+    compaction_prepared: ({ event, fork, emit }) => {
       if (fork._tag !== 'compacting') return fork
 
-      const configState = ambient.get(ConfigAmbient)
-      const agentStatus = read(AgentStatusProjection)
-      const limits = getForkConfig(configState, agentStatus, event.forkId)
-      if (!limits) return fork
-      const nextState = CompactionLifecycle.transition(fork, 'pendingFinalization', {
-        summary: event.summary,
+      // Preserve contextLimitBlocked through the transition for the same reason
+      // as compaction_started — compaction_failed needs it to determine retry intent.
+      const compactionOutcome: CompactionOutcome = event.isFallback
+        ? { isFallback: true }
+        : { isFallback: false, compactResult: event.compactResult }
+      const nextState = CompactionLifecycle.transition(fork, 'pendingInjection', {
+        turn: event.turn,
+        compactionOutcome,
         compactedMessageCount: event.compactedMessageCount,
-        originalTokenEstimate: event.originalTokenEstimate,
+        inputTokens: event.inputTokens,
+        outputTokens: event.outputTokens,
         refreshedContext: event.refreshedContext,
         shouldCompact: false,
-        contextLimitBlocked: computeContextLimitBlocked('pendingFinalization', fork.tokenEstimate, limits),
+        contextLimitBlocked: fork.contextLimitBlocked,
       })
 
       emitLifecycleSignals(fork, nextState, event.forkId, emit)
       return nextState
     },
 
-    compaction_completed: ({ event, fork, emit, ambient, read }) => {
-      if (fork._tag !== 'pendingFinalization') return fork
+    compaction_injected: ({ event, fork, emit, ambient, read }) => {
+      if (fork._tag !== 'pendingInjection') return fork
 
-      const tokenEstimate = Math.max(0, fork.tokenEstimate - event.tokensSaved)
-      const configState = ambient.get(ConfigAmbient)
-      const agentStatus = read(AgentStatusProjection)
-      const limits = getForkConfig(configState, agentStatus, event.forkId)
-      if (!limits) return fork
+      // Emit the compactionInjected signal with all data from PendingInjection
+      emit.compactionInjected({
+        forkId: event.forkId,
+        turn: fork.turn,
+        compactionOutcome: fork.compactionOutcome,
+        compactedMessageCount: fork.compactedMessageCount,
+        inputTokens: fork.inputTokens,
+        outputTokens: fork.outputTokens,
+        refreshedContext: fork.refreshedContext,
+      })
+
+      // Transition to idle with shouldCompact: false.
+      // The window rewrite hasn't happened yet (it fires via signal handler after this),
+      // so reading WindowProjection here would see stale pre-compaction token estimates.
+      // The subsequent tokenEstimateChanged signal from WindowProjection will recompute policy.
       const nextState = CompactionLifecycle.transition(fork, 'idle', {
-        tokenEstimate,
-        shouldCompact: deriveShouldCompact('idle', tokenEstimate, limits),
+        shouldCompact: false,
         contextLimitBlocked: false,
       })
 
@@ -319,18 +228,22 @@ export const CompactionProjection = Projection.defineForked<AppEvent, Compaction
     },
 
     compaction_failed: ({ event, fork, emit }) => {
+      // Window is unchanged after failure — no tokenEstimateChanged signal will fire.
+      // Preserve retry intent: if we were under pressure (contextLimitBlocked), keep shouldCompact true.
+      const wasBlocked = fork.contextLimitBlocked
+
       if (fork._tag === 'idle') {
         if (!fork.contextLimitBlocked) return fork
         const nextState = withAmbient(fork, {
           contextLimitBlocked: false,
-          shouldCompact: false,
+          shouldCompact: wasBlocked,
         })
         emitLifecycleSignals(fork, nextState, event.forkId, emit)
         return nextState
       }
 
       const nextState = CompactionLifecycle.transition(fork, 'idle', {
-        shouldCompact: false,
+        shouldCompact: wasBlocked,
         contextLimitBlocked: false,
       })
 
@@ -370,30 +283,11 @@ export const CompactionProjection = Projection.defineForked<AppEvent, Compaction
   },
 
   signalHandlers: (on) => [
-    on(AgentRoutingProjection.signals.agentRegistered, ({ value, state, ambient, read }) => {
-      const { forkId, parentForkId, role } = value
-      const parentState = state.forks.get(parentForkId)
-      if (!parentState) {
-        throw new Error(`Parent fork ${parentForkId} not found in CompactionProjection`)
-      }
+    on(AgentRoutingProjection.signals.agentRegistered, ({ value, state }) => {
+      const { forkId } = value
 
-      const resolvedRoleId = toRoleId(role)
-      if (resolvedRoleId === null) {
-        throw new Error(`Unknown agent role: ${role}`)
-      }
-
-      const skills = ambient.get(SkillsAmbient)
-      const configState = ambient.get(ConfigAmbient)
-      const tokenEstimate = estimateSystemPromptTokens(resolvedRoleId, skills, configState)
-      const agentStatus = read(AgentStatusProjection)
-      const limits = getForkConfig(configState, agentStatus, forkId)
       const newForkState = new CompactionIdle({
-        tokenEstimate,
-        lastActualInputTokens: null,
-        hasCompletedTurn: false,
-        modelId: parentState.modelId,
-        providerId: parentState.providerId,
-        shouldCompact: limits ? deriveShouldCompact('idle', tokenEstimate, limits) : false,
+        shouldCompact: false,
         contextLimitBlocked: false,
       })
 
@@ -403,22 +297,19 @@ export const CompactionProjection = Projection.defineForked<AppEvent, Compaction
       }
     }),
 
-    on(UserMessageResolutionProjection.signals.userMessageResolved, ({ value, state, emit, ambient, read }) => {
+    on(WindowProjection.signals.tokenEstimateChanged, ({ value, state, emit, ambient, read }) => {
       const fork = state.forks.get(value.forkId)
       if (!fork) return state
 
-      const addedTokens = estimateContentTokens([...value.content])
-      const tokenEstimate = fork.tokenEstimate + addedTokens
       const configState = ambient.get(ConfigAmbient)
       const agentStatus = read(AgentStatusProjection)
       const limits = getForkConfig(configState, agentStatus, value.forkId)
       if (!limits) return state
-      const nextState = recomputeOperationalFields(fork, limits, {
-        tokenEstimate,
-      })
+
+      const nextState = recomputePolicy(fork, value.tokenEstimate, limits)
+      if (nextState === fork) return state
 
       emitLifecycleSignals(fork, nextState, value.forkId, emit)
-
       return {
         ...state,
         forks: new Map(state.forks).set(value.forkId, nextState),
@@ -427,10 +318,11 @@ export const CompactionProjection = Projection.defineForked<AppEvent, Compaction
   ],
 
   ambientHandlers: (on) => ([
-    on(SkillsAmbient, ({ state }) => state),
     on(ConfigAmbient, ({ value, state, emit, read }) => {
       const nextForks = new Map<string | null, CompactionState>()
       const agentStatus = read(AgentStatusProjection)
+
+      const windowForks = read(WindowProjection)
 
       for (const [forkId, fork] of state.forks) {
         const limits = getForkConfig(value, agentStatus, forkId)
@@ -438,7 +330,9 @@ export const CompactionProjection = Projection.defineForked<AppEvent, Compaction
           nextForks.set(forkId, fork)
           continue
         }
-        const nextFork = recomputeOperationalFields(fork, limits)
+        const windowFork = windowForks.forks.get(forkId)
+        const tokenEstimate = windowFork?.tokenEstimate ?? 0
+        const nextFork = recomputePolicy(fork, tokenEstimate, limits)
         emitLifecycleSignals(fork, nextFork, forkId, emit)
         nextForks.set(forkId, nextFork)
       }

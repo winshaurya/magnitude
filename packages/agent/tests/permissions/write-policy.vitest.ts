@@ -21,10 +21,10 @@ function writeTurn(path: string, content: string) {
 
 function agentCreateTurn(agentId: string, _type: string, title: string, message: string) {
   // Lead variant only spawns 'worker' agents now. Create a task and spawn a
-  // worker for it; the resulting agent's agentId equals the task id.
+  // worker for it.
   return response()
     .createTask(agentId, title)
-    .spawnWorker(agentId, message)
+    .spawnWorker(agentId, 'engineer', agentId, message)
     .yield()
 }
 

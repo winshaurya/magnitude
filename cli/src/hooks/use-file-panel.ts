@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   resolveFileRef,
   type DisplayState,
-  type ToolStateProjectionState,
+  type TurnState,
 } from '@magnitudedev/agent'
 import { logger } from '@magnitudedev/logger'
 import { readFileSync, watchFile, unwatchFile } from 'node:fs'
@@ -35,8 +35,8 @@ export type FilePanelStream =
 
 export interface UseFilePanelParams {
   display: DisplayState | null
-  toolState: ToolStateProjectionState | null
-  workspacePath: string | null
+  toolState: TurnState | null
+  scratchpadPath: string | null
   projectRoot: string
 }
 
@@ -54,7 +54,7 @@ export interface UseFilePanelResult {
 export function useFilePanel({
   display,
   toolState,
-  workspacePath,
+  scratchpadPath,
   projectRoot,
 }: UseFilePanelParams): UseFilePanelResult {
   const [selectedFile, setSelectedFile] = useState<SelectedFileRef | null>(null)
@@ -62,18 +62,18 @@ export function useFilePanel({
 
   const selectedFileResolvedPath = useMemo(() => {
     if (!selectedFile) return null
-    if (!workspacePath) {
-      logger.warn({ path: selectedFile.path, cwd: projectRoot }, 'workspacePath not set while resolving selected file; session likely not initialized')
+    if (!scratchpadPath) {
+      logger.warn({ path: selectedFile.path, cwd: projectRoot }, 'scratchpadPath not set while resolving selected file; session likely not initialized')
       return null
     }
 
-    const resolved = resolveFileRef(selectedFile.path, projectRoot, workspacePath)
+    const resolved = resolveFileRef(selectedFile.path, projectRoot, scratchpadPath)
     if (!resolved?.resolvedPath) {
-      logger.warn({ path: selectedFile.path, cwd: projectRoot, workspacePath }, 'resolveFileRef returned null for selected file')
+      logger.warn({ path: selectedFile.path, cwd: projectRoot, scratchpadPath }, 'resolveFileRef returned null for selected file')
       return null
     }
     return resolved.resolvedPath
-  }, [selectedFile, workspacePath, projectRoot])
+  }, [selectedFile, scratchpadPath, projectRoot])
 
   const readSelectedFileFromDisk = useCallback(() => {
     if (!selectedFile || !selectedFileResolvedPath) {
@@ -86,16 +86,18 @@ export function useFilePanel({
       setSelectedFileContent(nextContent)
       return nextContent
     } catch (err) {
-      logger.error({ path: selectedFile.path, cwd: projectRoot, workspacePath, error: err instanceof Error ? err.message : String(err) }, 'Failed to read selected file')
+      logger.error({ path: selectedFile.path, cwd: projectRoot, scratchpadPath, error: err instanceof Error ? err.message : String(err) }, 'Failed to read selected file')
       setSelectedFileContent(null)
       return null
     }
-  }, [selectedFile, selectedFileResolvedPath, projectRoot, workspacePath])
+  }, [selectedFile, selectedFileResolvedPath, projectRoot, scratchpadPath])
 
   const activeStream = useMemo(() => {
     if (!selectedFile || !display) return null
 
-    const toolHandles = toolState?.toolHandles
+    const toolHandles = toolState?.handles.handles
+      ? Object.fromEntries(toolState.handles.handles)
+      : undefined
     const byRaw = findActiveFileStream(toolHandles, selectedFile.path)
     if (byRaw) return byRaw
     if (selectedFileResolvedPath && selectedFileResolvedPath !== selectedFile.path) {

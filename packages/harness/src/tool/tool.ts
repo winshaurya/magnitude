@@ -1,7 +1,13 @@
-import type { ToolDefinition } from "@magnitudedev/ai"
+import type { ToolDefinition, ValidationIssue } from "@magnitudedev/ai"
 import type { Schema } from "effect"
-import type { Effect } from "effect"
+import { Data, type Effect } from "effect"
 import type { StreamingPartial } from "@magnitudedev/ai"
+
+// --- StreamValidationError ---
+
+export class StreamValidationError extends Data.TaggedError("StreamValidationError")<{
+  readonly message: string
+}> {}
 
 // --- ToolContext ---
 
@@ -13,13 +19,13 @@ export interface ToolContext<TEmission = never> {
 
 // --- StreamHook ---
 
-export interface StreamHook<TInput, TEmission, TStreamState, E = never, R = never> {
+export interface StreamHook<TInput, TEmission, TStreamState, R = never> {
   readonly initial: TStreamState
   readonly onInput: (
     input: StreamingPartial<TInput>,
     state: TStreamState,
     ctx: ToolContext<TEmission>
-  ) => Effect.Effect<TStreamState, E, R>
+  ) => Effect.Effect<TStreamState, StreamValidationError, R>
 }
 
 // --- HarnessTool (split into erased and concrete) ---
@@ -27,7 +33,7 @@ export interface StreamHook<TInput, TEmission, TStreamState, E = never, R = neve
 export interface HarnessToolErased {
   readonly definition: ToolDefinition
   readonly execute: (input: any, ctx: any) => Effect.Effect<any, any, any>
-  readonly stream?: StreamHook<any, any, any, any, any>
+  readonly stream?: StreamHook<any, any, any, any>
   readonly emissionSchema?: Schema.Schema<any, any, any> | undefined
   readonly errorSchema?: Schema.Schema<any, any, any> | undefined
 }
@@ -42,7 +48,7 @@ export interface HarnessToolConcrete<
 > {
   readonly definition: ToolDefinition<TInput, TOutput>
   readonly execute: (input: TInput, ctx: ToolContext<TEmission>) => Effect.Effect<TOutput, E, R>
-  readonly stream?: StreamHook<TInput, TEmission, TStreamState, E, R>
+  readonly stream?: StreamHook<TInput, TEmission, TStreamState, R>
   readonly emissionSchema?: [TEmission] extends [never] ? undefined : Schema.Schema<TEmission, any, never>
   readonly errorSchema?: [E] extends [never] ? undefined : Schema.Schema<E, any, never>
 }
@@ -66,7 +72,7 @@ export type HarnessTool<
 interface DefineHarnessToolConfig<TInput, TOutput, TEmission, E, R, TStreamState = unknown> {
   readonly definition: ToolDefinition<TInput, TOutput>
   readonly execute: (input: TInput, ctx: ToolContext<TEmission>) => Effect.Effect<TOutput, E, R>
-  readonly stream?: StreamHook<TInput, TEmission, TStreamState, E, R>
+  readonly stream?: StreamHook<TInput, TEmission, TStreamState, R>
   readonly emissionSchema?: [TEmission] extends [never] ? undefined : Schema.Schema<TEmission, any, never>
   readonly errorSchema?: [E] extends [never] ? undefined : Schema.Schema<E, any, never>
 }

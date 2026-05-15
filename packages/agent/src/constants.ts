@@ -12,10 +12,10 @@ export const CHARS_PER_TOKEN_UPPER = 4
 export const CHARS_PER_TOKEN_LOWER = 3
 
 /** Max tokens for a resolved ref in an inspect block */
-export const INSPECT_TOKEN_LIMIT = 25_000
+export const TRUNCATION_TOKEN_LIMIT = 25_000
 
-/** Character equivalent of INSPECT_TOKEN_LIMIT */
-export const INSPECT_CHAR_LIMIT = INSPECT_TOKEN_LIMIT * CHARS_PER_TOKEN_UPPER
+/** Character equivalent of TRUNCATION_TOKEN_LIMIT */
+export const TRUNCATION_CHAR_LIMIT = TRUNCATION_TOKEN_LIMIT * CHARS_PER_TOKEN_UPPER
 
 
 // =============================================================================
@@ -30,8 +30,27 @@ export const PROSE_DELIM_CLOSE = '</raw>'
 
 
 // =============================================================================
+// Context Budget
+// =============================================================================
+
+/** Fixed output token reserve subtracted from contextWindow to compute hardCap */
+export const OUTPUT_TOKEN_RESERVE = 8_192
+
+// =============================================================================
 // Compaction
 // =============================================================================
+
+/** Maximum number of files the compact() tool will read */
+export const COMPACT_MAX_FILES = 10
+
+/** Maximum characters per file in compact() tool output */
+export const COMPACT_MAX_FILE_CHARS = 10_000
+
+/** Maximum retry attempts for compaction if agent doesn't call compact() */
+export const COMPACTION_MAX_RETRIES = 3
+
+/** Fraction of content to keep as fallback when all compaction retries fail */
+export const COMPACTION_FALLBACK_KEEP_RATIO = 0.25
 
 /** Fraction of soft cap to keep as recent messages during compaction */
 export const KEEP_MESSAGE_RATIO = 0.1

@@ -37,6 +37,7 @@ export function createTestBoundModel(
       const result: ModelStreamResult<MagnitudeStreamError> = {
         events: Stream.fromIterable(events),
         parsers: new Map(),
+        logprobs: [],
       }
       return Effect.succeed(result)
     },

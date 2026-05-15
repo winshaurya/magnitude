@@ -13,7 +13,7 @@ describe('turn control interleavings', () => {
       yield* h.send(mkTurnOutcomeEventSuccess({ turnId: 't-old', chainId: 'c-race' }))
 
       expect(() => assertNoTurnIdMismatch(eventsForFork(h, null))).toThrow()
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('wake pressure around completion boundary keeps IDs consistent', () =>
@@ -27,7 +27,7 @@ describe('turn control interleavings', () => {
       yield* h.send(mkTurnOutcomeEventSuccess({ turnId: 't-rp-2', chainId: 'c-rp' }))
 
       assertNoTurnIdMismatch(eventsForFork(h, null))
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('subagent completion and parent scheduling do not cross-contaminate IDs', () =>
@@ -41,7 +41,7 @@ describe('turn control interleavings', () => {
 
       assertNoTurnIdMismatch(eventsForFork(h, null))
       assertNoTurnIdMismatch(eventsForFork(h, 'fork-b'))
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('sanity: helper catches synthetic stale completion', () =>
@@ -51,6 +51,6 @@ describe('turn control interleavings', () => {
       yield* h.send(mkTurnOutcomeEventSuccess({ turnId: 't-wrong', chainId: 'c-neg' }))
 
       expect(() => assertNoTurnIdMismatch(eventsForFork(h, null))).toThrow()
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 })

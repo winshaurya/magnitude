@@ -133,4 +133,14 @@ export class ChatCompletionsStreamChunk extends Schema.Class<ChatCompletionsStre
   model: Schema.String,
   choices: Schema.Array(ChatChunkChoice),
   usage: Schema.optional(Schema.NullOr(ChatChunkUsage)),
+  error: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        message: Schema.String,
+        type: Schema.optional(Schema.NullOr(Schema.String)),
+        code: Schema.optional(Schema.NullOr(Schema.String)),
+        param: Schema.optional(Schema.NullOr(Schema.String)),
+      }),
+    ),
+  ),
 }) {}

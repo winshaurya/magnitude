@@ -3,10 +3,12 @@ import { Effect } from 'effect'
 import { TestHarness, TestHarnessLive } from '../../src/test-harness/harness'
 import { getRootMemory, lastInboxMessage, sendUserMessage } from './helpers'
 import { windowToPrompt } from '../../src/prompts/window-to-prompt'
-import type { ForkWindowState } from '../../src/projections/window'
+import { createToolResultFormatter } from '@magnitudedev/harness'
+import { leaderToolkit } from '../../src/tools/toolkits'
+import type { ForkWindowState } from '../../src/window'
 
 function renderedUserTextFromMemory(memory: ForkWindowState): string {
-  const prompt = windowToPrompt(memory, '', 'UTC', true)
+  const prompt = windowToPrompt(memory, '', 'UTC', { agents: new Map() }, createToolResultFormatter(leaderToolkit))
   return prompt.messages
     .filter(m => m._tag === 'UserMessage')
     .map(m => m.parts.map(p => p._tag === 'TextPart' ? p.text : '').join('\n'))

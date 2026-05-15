@@ -17,7 +17,7 @@ import type { PolicyContext } from './types'
 import { agentEnv } from '../util/agent-env'
 import { editTool, writeTool } from '../tools/fs'
 import { shellTool } from '../tools/shell'
-import { expandWorkspacePath } from '../workspace/workspace-path'
+import { expandScratchpadPath } from '@magnitudedev/scratchpad'
 
 type ShellInput = Schema.Schema.Type<typeof shellTool.definition.inputSchema>
 type FileWriteInput = Schema.Schema.Type<typeof writeTool.definition.inputSchema>
@@ -119,9 +119,9 @@ function checkPathBounds(
   operation: string,
 ): Decision | null {
   if (ctx.disableCwdSafeguards) return null
-  const expandedPath = expandWorkspacePath(path, ctx.workspacePath)
+  const { path: expandedPath } = expandScratchpadPath(path, ctx.scratchpadPath)
   const fullPath = resolve(ctx.cwd, expandedPath)
-  const env = agentEnv(ctx.cwd, ctx.workspacePath)
+  const env = agentEnv(ctx.cwd, ctx.scratchpadPath)
   if (!isPathWithin(fullPath, env, ...roots(ctx))) {
     return deny(`Cannot ${operation} files outside allowed directories`)
   }
@@ -136,7 +136,7 @@ export function denyWritesOutside(
     shell: (input: ShellInput, ctx: PolicyContext) => {
       if (ctx.disableCwdSafeguards) return Effect.succeed(null)
 
-      const env = agentEnv(ctx.cwd, ctx.workspacePath)
+      const env = agentEnv(ctx.cwd, ctx.scratchpadPath)
       if (!writesStayWithin(input.command, env, ...roots(ctx))) {
         return Effect.succeed(deny('Command targets paths outside allowed directories'))
       }
@@ -163,10 +163,10 @@ export function denyMassDestructiveIn(
       const classification = classifyShellCommand(input.command)
       if (classification.tier !== 'mass-destructive') return Effect.succeed(null)
 
-      const env = agentEnv(ctx.cwd, ctx.workspacePath)
+      const env = agentEnv(ctx.cwd, ctx.scratchpadPath)
       const protectedRoots = roots(ctx)
 
-      const nonProtectedRoots = [ctx.cwd, ctx.workspacePath]
+      const nonProtectedRoots = [ctx.cwd, ctx.scratchpadPath]
       if (writesStayWithin(input.command, env, ...nonProtectedRoots)) {
         return Effect.succeed(null)
       }

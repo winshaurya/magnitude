@@ -33,13 +33,13 @@
     "navbar": {
         "links": [
             {
-                "label": "Community",
+                "label": "Join community",
                 "href": "https://discord.gg/VcdpMh9tTy"
             }
         ],
         "primary": {
             "type": "button",
-            "label": "Sign up",
+            "label": "Get started",
             "href": "https://app.magnitude.dev"
         }
     },
@@ -67,7 +67,7 @@
             "why-magnitude",
             "get-started",
             "using-magnitude",
-            "coding-plan",
+            "pricing",
             "agent-team",
             "configuration",
             "open-source"

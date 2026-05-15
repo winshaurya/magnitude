@@ -50,9 +50,6 @@ export interface StorageClient<TSlot extends string = string> {
       policy: ContextLimitPolicy
     ): Promise<void>
 
-    getTelemetryEnabled(): Promise<boolean>
-    setTelemetryEnabled(value: boolean): Promise<void>
-
     loadFull(): Promise<MagnitudeConfig>
     updateFull(
       fn: (c: MagnitudeConfig) => MagnitudeConfig
@@ -80,8 +77,8 @@ export interface StorageClient<TSlot extends string = string> {
     readEvents<T>(sessionId: string): Promise<T[]>
     appendEvents<T>(sessionId: string, events: T[]): Promise<void>
     getEventsPath(sessionId: string): string
-    createWorkspace(sessionId: string, cwd: string): Promise<string>
-    getWorkspacePath(sessionId: string): string
+    createScratchpad(sessionId: string): Promise<string>
+    getScratchpadPath(sessionId: string): string
   }
 
   memoryJobs: {
@@ -164,13 +161,6 @@ export async function createStorageClient<TSlot extends string = string>(options
         return run(Effect.flatMap(ConfigStorage, (s) => s.setContextLimitPolicy(policy)))
       },
 
-      getTelemetryEnabled() {
-        return run(Effect.flatMap(ConfigStorage, (s) => s.getTelemetryEnabled()))
-      },
-
-      setTelemetryEnabled(value) {
-        return run(Effect.flatMap(ConfigStorage, (s) => s.setTelemetryEnabled(value)))
-      },
 
       loadFull() {
         return run(Effect.flatMap(ConfigStorage, (s) => s.load()))
@@ -230,14 +220,14 @@ export async function createStorageClient<TSlot extends string = string>(options
         run(Effect.flatMap(SessionStorage, (s) => s.appendEvents<T>(sessionId, events))),
       getEventsPath: (sessionId: string) =>
         runtime.runSync(Effect.map(SessionStorage, (s) => s.paths.sessionEventsFile(sessionId))),
-      createWorkspace: (sessionId, cwd) =>
+      createScratchpad: (sessionId) =>
         run(
           Effect.flatMap(SessionStorage, (s) =>
-            s.createSessionWorkspace(sessionId, cwd)
+            s.createSessionScratchpad(sessionId)
           )
         ),
-      getWorkspacePath: (sessionId) =>
-        runtime.runSync(Effect.map(SessionStorage, (s) => s.paths.sessionWorkspace(sessionId))),
+      getScratchpadPath: (sessionId) =>
+        runtime.runSync(Effect.map(SessionStorage, (s) => s.paths.sessionScratchpad(sessionId))),
     },
 
     memoryJobs: {

@@ -17,17 +17,17 @@ import type { DebugSnapshot } from './projections/debug-introspection'
 // Projections
 import { SessionContextProjection } from './projections/session-context'
 import { TurnProjection } from './projections/turn'
-import { CanonicalTurnProjection } from './projections/canonical-turn'
-import { WindowProjection } from './projections/window'
+import { HarnessStateProjection } from './projections/harness-state'
+import { WindowProjection } from './window'
 import { SubagentActivityProjection } from './projections/subagent-activity'
 import { DisplayProjection } from './projections/display'
-import { ToolStateProjection } from './projections/tool-state'
+
 import { AgentRoutingProjection } from './projections/agent-routing'
 import { AgentStatusProjection } from './projections/agent-status'
 import { TaskGraphProjection } from './projections/task-graph'
 import { TaskWorkerProjection } from './projections/task-worker'
 import { CompactionProjection } from './projections/compaction'
-import { ReplayProjection } from './projections/replay'
+
 import { ConversationProjection } from './projections/conversation'
 import { UserPresenceProjection } from './projections/user-presence'
 import { OutboundMessagesProjection } from './projections/outbound-messages'
@@ -39,9 +39,13 @@ import { TurnController } from './workers/turn-controller'
 import { Cortex } from './workers/cortex'
 import { AgentLifecycle } from './workers/agent-lifecycle'
 import { LifecycleCoordinator } from './workers/lifecycle-coordinator'
+import { RetryController } from './workers/retry-controller'
+
+// Runtime
+import { EffectLoggerLayer } from './runtime/effect-logger'
 
 import { Autopilot } from './workers/autopilot'
-import { CompactionWorker } from './workers/compaction-worker'
+import { CompactionWorker } from './compaction/worker'
 import { ApprovalWorker } from './workers/approval-worker'
 import { isRoleId, type RoleId } from './agents/role-validation'
 import { UserPresenceWorker } from './workers/user-presence-worker'
@@ -52,7 +56,6 @@ import { FsLive } from './services/fs'
 // Execution
 import { ExecutionManager } from './execution/types'
 import { ExecutionManagerLive } from './execution/execution-manager'
-import { BrowserServiceLive } from './services/browser-service'
 
 import { FetchHttpClient } from '@effect/platform'
 import { registerApprovalBridge } from './execution/approval-bridge'
@@ -68,8 +71,8 @@ import { collectSessionContext } from './util/collect-session-context'
 import { AgentModelResolverLive } from './model/model-resolver'
 
 // Config & Auth
-import { MagnitudeClient, createMagnitudeClient } from '@magnitudedev/magnitude-client'
-import type { ModelOverrides } from '@magnitudedev/roles'
+import { MagnitudeClient, createMagnitudeClient, isEnvFlagOn } from '@magnitudedev/magnitude-client'
+import { configure as configureImageDescription } from './util/describe-image'
 import { createTraceListenerLayer } from './tracing/tracing'
 import type { StorageClient } from '@magnitudedev/storage'
 import { initLogger, logger } from '@magnitudedev/logger'
@@ -96,13 +99,12 @@ export const CodingAgent = Agent.define<AppEvent>()({
     TaskGraphProjection,
     CompactionProjection,
     TurnProjection,
-    CanonicalTurnProjection,
+    HarnessStateProjection,
 
-    ReplayProjection,
     SubagentActivityProjection,
     OutboundMessagesProjection,
     UserMessageResolutionProjection,
-    ToolStateProjection,
+
     WindowProjection,
     TaskWorkerProjection,
     DisplayProjection,
@@ -115,6 +117,7 @@ export const CodingAgent = Agent.define<AppEvent>()({
     Cortex,
     AgentLifecycle,
     LifecycleCoordinator,
+    RetryController,
     Autopilot,
     CompactionWorker,
     ApprovalWorker,
@@ -136,7 +139,7 @@ export const CodingAgent = Agent.define<AppEvent>()({
     },
     state: {
       display: DisplayProjection,
-      toolState: ToolStateProjection,
+      harnessState: HarnessStateProjection,
       turn: TurnProjection,
       memory: WindowProjection,
       compaction: CompactionProjection,
@@ -172,7 +175,7 @@ export interface CreateClientOptions {
    * Provide a pre-built session context instead of collecting from the local environment.
    * Useful for evals / headless runs where the agent operates in a container.
    */
-  sessionContext?: Omit<SessionContext, 'workspacePath'>
+  sessionContext?: Omit<SessionContext, 'scratchpadPath'>
 
   /**
    * Magnitude API key. Falls back to MAGNITUDE_API_KEY env var.
@@ -184,11 +187,6 @@ export interface CreateClientOptions {
    * then to 'https://app.magnitude.dev/api/v1'.
    */
   magnitudeEndpoint?: string
-
-  /**
-   * Optional model overrides for development/testing.
-   */
-  modelOverrides?: ModelOverrides
 
   /**
    * Disable shell command classification safeguards for this runtime only.
@@ -217,7 +215,7 @@ export interface CreateClientOptions {
 export async function createCodingAgentClient(options: CreateClientOptions) {
 
   // Construct Magnitude config from options / env vars
-  const useLocal = !!process.env.MAGNITUDE_USE_LOCAL
+  const useLocal = isEnvFlagOn(process.env.MAGNITUDE_USE_LOCAL)
   const apiKey = options.magnitudeApiKey ?? (useLocal ? process.env.MAGNITUDE_LOCAL_API_KEY : undefined) ?? process.env.MAGNITUDE_API_KEY
   if (!apiKey) throw new Error(
     useLocal
@@ -229,8 +227,12 @@ export async function createCodingAgentClient(options: CreateClientOptions) {
 
   const magnitudeClientLayer = Layer.succeed(
     MagnitudeClient,
-    createMagnitudeClient({ endpoint: magnitudeEndpoint, apiKey }),
+    createMagnitudeClient({ endpoint: magnitudeEndpoint, apiKey, sessionId: options.sessionId ?? undefined }),
   )
+
+  // Configure image description module with the same endpoint/apiKey
+  // so it can call util/image without duplicating env var resolution
+  configureImageDescription({ endpoint: magnitudeEndpoint, apiKey })
 
   // Enable tracing in debug mode
   const traceSessionId = options.sessionId ?? new Date().toISOString().replace(/:/g, '-').replace(/\.\d{3}Z$/, 'Z')
@@ -251,10 +253,10 @@ export async function createCodingAgentClient(options: CreateClientOptions) {
     disableCwdSafeguards: options.disableCwdSafeguards ?? false,
   })
   const baseLayer = Layer.mergeAll(
+    EffectLoggerLayer,
     Layer.provide(ExecutionManagerLive, ephemeralSessionContextLayer),
-    BrowserServiceLive,
 
-    Layer.provide(AgentModelResolverLive(options.modelOverrides), magnitudeClientLayer),
+    Layer.provide(AgentModelResolverLive(), magnitudeClientLayer),
     magnitudeClientLayer,
 
     FetchHttpClient.layer,
@@ -319,12 +321,12 @@ export async function createCodingAgentClient(options: CreateClientOptions) {
       }))
 
       const sessionMetadata = yield* persistence.getSessionMetadata()
-      const workspacePath = yield* Effect.promise(() =>
-        options.storage.sessions.createWorkspace(sessionMetadata.sessionId, baseContext.cwd)
+      const scratchpadPath = yield* Effect.promise(() =>
+        options.storage.sessions.createScratchpad(sessionMetadata.sessionId)
       )
       const context: SessionContext = {
         ...baseContext,
-        workspacePath,
+        scratchpadPath,
       }
 
       yield* Effect.promise(() => client.send({
@@ -334,7 +336,7 @@ export async function createCodingAgentClient(options: CreateClientOptions) {
       }))
 
       // Publish config from catalog
-      yield* publishConfigFromCatalog(options.storage, options.modelOverrides)
+      yield* publishConfigFromCatalog(options.storage)
 
       // Load skills from standard directories
       const skills = yield* Effect.tryPromise(() => loadSkills(process.cwd()))
@@ -349,10 +351,10 @@ export async function createCodingAgentClient(options: CreateClientOptions) {
 
     } else {
       // Existing session — hydrate
-      // Ensure workspace exists and symlink is up-to-date
+      // Ensure scratchpad exists
       const sessionMetadata = yield* persistence.getSessionMetadata()
       yield* Effect.promise(() =>
-        options.storage.sessions.createWorkspace(sessionMetadata.sessionId, process.cwd())
+        options.storage.sessions.createScratchpad(sessionMetadata.sessionId)
       )
 
       yield* hydrationContext.setHydrating(true)
@@ -394,7 +396,6 @@ export async function createCodingAgentClient(options: CreateClientOptions) {
             turnId: forkTurnState.turnId,
             chainId: forkTurnState.chainId,
             strategyId: 'native',
-
             outcome: { _tag: 'Cancelled', reason: { _tag: 'WorkerKilled' } },
             inputTokens: null,
             outputTokens: null,
@@ -402,6 +403,14 @@ export async function createCodingAgentClient(options: CreateClientOptions) {
             cacheWriteTokens: null,
             providerId: null,
             modelId: null,
+          }))
+
+          // Re-trigger the fork so TurnController picks it up and retries the turn.
+          // Engine state is preserved (WorkerKilled path) so the harness can skip
+          // tools that already executed before the crash.
+          yield* Effect.promise(() => client.send({
+            type: 'wake',
+            forkId: agent.forkId,
           }))
         }
       }
@@ -423,13 +432,19 @@ export async function createCodingAgentClient(options: CreateClientOptions) {
           providerId: null,
           modelId: null,
         }))
+
+        // Re-trigger root fork for crash recovery
+        yield* Effect.promise(() => client.send({
+          type: 'wake',
+          forkId: null,
+        }))
       }
 
       // NOTE: AgentStatusProjection is the source of truth for agent identity, metadata, and execution state.
       // AgentRoutingProjection handles message routing only. forkId remains the execution handle used by forked projections/workers.
 
       // Publish config from catalog
-      yield* publishConfigFromCatalog(options.storage, options.modelOverrides)
+      yield* publishConfigFromCatalog(options.storage)
 
       // Load skills from standard directories
       const skills = yield* Effect.tryPromise(() => loadSkills(process.cwd()))
@@ -484,7 +499,7 @@ export async function createCodingAgentClient(options: CreateClientOptions) {
     await originalDispose()
   }
 
-  const refreshConfig = () => client.runEffect(publishConfigFromCatalog(options.storage, options.modelOverrides))
+  const refreshConfig = () => client.runEffect(publishConfigFromCatalog(options.storage))
 
   return {
     ...client,

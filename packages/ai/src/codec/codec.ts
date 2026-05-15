@@ -19,6 +19,7 @@ export interface Codec<TWireReq, TWireChunk> {
     options: {
       tools?: readonly ToolDefinition[]
       classifyStreamError: (failure: StreamFailure | E) => TStreamError
+      generateToolCallId?: () => ToolCallId
     },
   ) => {
     readonly events: Stream.Stream<ResponseStreamEvent<TStreamError>, never>

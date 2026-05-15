@@ -44,7 +44,7 @@ export const contentDisplay = createToolDisplay<ContentState>({
               <span style={{ fg: isError ? theme.error : theme.info }}>{isError ? '✗ ' : '✎ '}</span>
               {isDone ? (
                 <>
-                  <span style={{ fg: theme.foreground }}>{'Wrote '}</span>
+                  <span style={{ fg: theme.foreground }}>{'Write '}</span>
                   <span style={{ fg: isHovered ? theme.link : theme.primary }} attributes={TextAttributes.UNDERLINE}>{String(path ?? 'file')}</span>
                   <span style={{ fg: theme.muted }}>{` (${state.lineCount} lines)`}</span>
                 </>
@@ -56,7 +56,7 @@ export const contentDisplay = createToolDisplay<ContentState>({
                 </>
               ) : (
                 <>
-                  <span style={{ fg: theme.foreground }}>{'Writing '}</span>
+                  <span style={{ fg: theme.foreground }}>{'Write '}</span>
                   <span style={{ fg: theme.muted }}>{String(path ?? '...')}</span>
                   <ShimmerText text="..." interval={SHIMMER_INTERVAL_MS} primaryColor={theme.secondary} />
                 </>
@@ -105,7 +105,6 @@ export const contentDisplay = createToolDisplay<ContentState>({
   },
   summary: (state) => {
     const path = state.path || 'file';
-    if (state.phase === 'streaming' || state.phase === 'executing') return `Writing ${String(path)}`;
-    return `Wrote ${String(path)}`;
+    return `Write ${String(path)}`;
   },
 });

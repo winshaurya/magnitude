@@ -113,12 +113,15 @@ describe('Event Serialization', () => {
         forkId: null,
         turnId: 'turn-1',
         toolCallId: 'call-1',
+        providerToolCallId: 'call-1',
         toolKey: 'shell',
         event: {
           _tag: 'ToolExecutionEnded',
           toolCallId: 'call-1',
+          providerToolCallId: 'call-1',
           group: 'default',
           toolName: 'shell',
+          toolKey: 'shell',
           result: {
             _tag: 'Success',
             output: { stdout: 'file1\nfile2', stderr: '', exitCode: 0 },
@@ -225,12 +228,15 @@ describe('Event Serialization', () => {
         forkId: null,
         turnId: 'turn-1',
         toolCallId: 'call-1',
+        providerToolCallId: 'call-1',
         toolKey: 'custom',
         event: {
           _tag: 'ToolExecutionEnded',
           toolCallId: 'call-1',
+          providerToolCallId: 'call-1',
           group: 'default',
           toolName: 'custom',
+          toolKey: 'custom',
           result: {
             _tag: 'Success',
             output: {
@@ -316,12 +322,15 @@ describe('Event Serialization', () => {
         forkId: null,
         turnId: 'turn-1',
         toolCallId: 'call-1',
+        providerToolCallId: 'call-1',
         toolKey: 'shell',
         event: {
           _tag: 'ToolExecutionEnded',
           toolCallId: 'call-1',
+          providerToolCallId: 'call-1',
           group: 'default',
           toolName: 'shell',
+          toolKey: 'shell',
           result: {
             _tag: 'Error',
             error: 'Command failed: permission denied'

@@ -16,7 +16,7 @@ export function isRoleId(value: string): value is RoleId {
 
 export interface PolicyContext {
   readonly cwd: string
-  readonly workspacePath: string
+  readonly scratchpadPath: string
   readonly disableShellSafeguards?: boolean
   readonly disableCwdSafeguards?: boolean
 }

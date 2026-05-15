@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@effect/vitest'
 import { Effect } from 'effect'
+import type { ToolCallId, ProviderToolCallId } from '@magnitudedev/ai'
 import { TestHarness, TestHarnessLive } from '../../src/test-harness/harness'
 import { assertPrefixUnchanged, getRenderedUserText, getRootMemory, sendUserMessage, snapshotMessageRefs } from './helpers'
 
@@ -31,7 +32,7 @@ describe('prompt caching consistency', () => {
 
       expect(afterRendered).toContain(beforeRendered)
       assertPrefixUnchanged(before, afterMemory)
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('observations append new inbox and preserve prefix', () =>
@@ -62,7 +63,7 @@ describe('prompt caching consistency', () => {
       expect(afterRendered).toContain(beforeRendered)
       expect(afterRendered).toContain('observation note')
       assertPrefixUnchanged(before, afterMemory)
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('turn unexpected error appends new inbox and preserves prefix', () =>
@@ -101,7 +102,7 @@ describe('prompt caching consistency', () => {
       expect(afterRendered).toContain(beforeRendered)
       expect(afterRendered).toContain('fatal failure')
       assertPrefixUnchanged(before, afterMemory)
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('queue coalescing rewrites queue only and flushes latest update', () =>
@@ -118,8 +119,8 @@ describe('prompt caching consistency', () => {
       const beforeMemory = yield* getRootMemory(h)
       const before = snapshotMessageRefs(beforeMemory)
 
-      yield* h.send({ type: 'tool_event', forkId: null, turnId: 't-1', toolCallId: 'x', toolKey: 'fileRead', event: { _tag: 'ToolInputStarted', toolCallId: 'x', toolName: 'read', toolName: 'fileRead', group: 'fs', openSpan: { start: { offset: 0, line: 1, col: 1 }, end: { offset: 10, line: 1, col: 11 } } } })
-      yield* h.send({ type: 'tool_event', forkId: null, turnId: 't-1', toolCallId: 'x', toolKey: 'fileRead', event: { _tag: 'ToolInputStarted', toolCallId: 'x', toolName: 'read', toolName: 'fileRead', group: 'fs', openSpan: { start: { offset: 0, line: 1, col: 1 }, end: { offset: 10, line: 1, col: 11 } } } })
+      yield* h.send({ type: 'tool_event', forkId: null, turnId: 't-1', toolCallId: 'x', providerToolCallId: 'x' as ProviderToolCallId, toolKey: 'fileRead', event: { _tag: 'ToolInputStarted', toolCallId: 'x' as ToolCallId, providerToolCallId: 'x' as ProviderToolCallId, toolName: 'read', toolKey: 'fileRead' } })
+      yield* h.send({ type: 'tool_event', forkId: null, turnId: 't-1', toolCallId: 'x', providerToolCallId: 'x' as ProviderToolCallId, toolKey: 'fileRead', event: { _tag: 'ToolInputStarted', toolCallId: 'x' as ToolCallId, providerToolCallId: 'x' as ProviderToolCallId, toolName: 'read', toolKey: 'fileRead' } })
 
       const midMemory = yield* getRootMemory(h)
       assertPrefixUnchanged(before, midMemory)
@@ -150,7 +151,7 @@ describe('prompt caching consistency', () => {
 
       const afterRendered = yield* getRenderedUserText(h)
       expect(afterRendered).toContain('latest only')
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('flush appends one inbox without rewriting prior messages', () =>
@@ -168,7 +169,7 @@ describe('prompt caching consistency', () => {
       const afterMemory = yield* getRootMemory(h)
       expect(afterRendered).toContain(beforeRendered)
       assertPrefixUnchanged(before, afterMemory)
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('compaction is explicit exception and rewrites history', () =>
@@ -185,19 +186,40 @@ describe('prompt caching consistency', () => {
       const beforeRendered = yield* getRenderedUserText(h)
 
       yield* h.send({
-        type: 'compaction_completed',
+        type: 'compaction_started',
         forkId: null,
-        summary: 'summary block',
         compactedMessageCount: 1,
-        tokensSaved: 100,
-        preservedVariables: [],
+      })
+      yield* h.send({
+        type: 'compaction_prepared',
+        forkId: null,
+        turn: {
+          turnId: 'compaction-test',
+          assistant: { _tag: 'AssistantMessage' as const, text: 'summary block', toolCalls: [] },
+          toolResults: [],
+          feedback: [],
+          clean: true,
+        },
+        isFallback: false,
+        compactResult: {
+          summary: 'summary block',
+          reflection: 'no issues',
+          files: [],
+        },
+        compactedMessageCount: 1,
+        inputTokens: null,
+        outputTokens: null,
         refreshedContext: null,
+      })
+      yield* h.send({
+        type: 'compaction_injected',
+        forkId: null,
       })
 
       const afterRendered = yield* getRenderedUserText(h)
       expect(beforeRendered).toContain('before compaction')
       expect(afterRendered).toContain('summary block')
       expect(afterRendered).toContain('<session_context>')
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 })

@@ -1,5 +1,18 @@
 import { describe, expect, test } from 'bun:test'
+import type { ProviderToolCallId, ToolCallId } from '@magnitudedev/ai'
 import { computeProvisionalEditDiffs, fileEditModel } from './file-edit'
+
+const toolCallId = 'tc1' as ToolCallId
+const providerToolCallId = 'tc1' as ProviderToolCallId
+const toolName = 'edit'
+const toolKey = 'fileEdit'
+
+const baseEvent = {
+  toolCallId,
+  providerToolCallId,
+  toolName,
+  toolKey,
+}
 
 describe('computeProvisionalEditDiffs', () => {
   test('computes provisional diff for unique match', () => {
@@ -30,22 +43,28 @@ describe('computeProvisionalEditDiffs', () => {
 
 describe('fileEditModel provisional diffs', () => {
   test('populates diffs from base-content emission before completion', () => {
-    const started = fileEditModel.reduce(fileEditModel.initial, { _tag: 'ToolInputStarted' })
+    const started = fileEditModel.reduce(fileEditModel.initial, { _tag: 'ToolInputStarted', ...baseEvent })
 
     let state = fileEditModel.reduce(started, {
       _tag: 'ToolInputFieldChunk',
+      toolCallId,
+      providerToolCallId,
       field: 'path',
       path: ['path'] as unknown as never,
       delta: 'f.ts',
     })
     state = fileEditModel.reduce(state, {
       _tag: 'ToolInputFieldChunk',
+      toolCallId,
+      providerToolCallId,
       field: 'old',
       path: ['old'] as unknown as never,
       delta: 'old',
     })
     state = fileEditModel.reduce(state, {
       _tag: 'ToolInputFieldChunk',
+      toolCallId,
+      providerToolCallId,
       field: 'new',
       path: ['new'] as unknown as never,
       delta: 'new',
@@ -56,6 +75,7 @@ describe('fileEditModel provisional diffs', () => {
 
     const withBase = fileEditModel.reduce(state, {
       _tag: 'ToolEmission',
+      ...baseEvent,
       value: {
         type: 'file_edit_base_content',
         path: 'f.ts',
@@ -72,7 +92,8 @@ describe('fileEditModel provisional diffs', () => {
 
     const completed = fileEditModel.reduce(withBase, {
       _tag: 'ToolExecutionEnded',
-      result: { _tag: 'Success', output: '', query: null },
+      ...baseEvent,
+      result: { _tag: 'Success', output: '' },
     })
     expect(completed.phase).toBe('completed')
     expect(completed.diffs).toHaveLength(1)
@@ -80,11 +101,13 @@ describe('fileEditModel provisional diffs', () => {
   })
 
   test('diffs appear when baseContent arrives before ToolInputReady', () => {
-    const started = fileEditModel.reduce(fileEditModel.initial, { _tag: 'ToolInputStarted' })
+    const started = fileEditModel.reduce(fileEditModel.initial, { _tag: 'ToolInputStarted', ...baseEvent })
 
     // Simulate path completed (as if ToolInputFieldComplete fired for path)
     let state = fileEditModel.reduce(started, {
       _tag: 'ToolInputFieldChunk',
+      toolCallId,
+      providerToolCallId,
       field: 'path',
       path: ['path'] as unknown as never,
       delta: 'f.ts',
@@ -93,6 +116,8 @@ describe('fileEditModel provisional diffs', () => {
     // old streaming
     state = fileEditModel.reduce(state, {
       _tag: 'ToolInputFieldChunk',
+      toolCallId,
+      providerToolCallId,
       field: 'old',
       path: ['old'] as unknown as never,
       delta: 'old',
@@ -101,6 +126,8 @@ describe('fileEditModel provisional diffs', () => {
     // new streaming
     state = fileEditModel.reduce(state, {
       _tag: 'ToolInputFieldChunk',
+      toolCallId,
+      providerToolCallId,
       field: 'new',
       path: ['new'] as unknown as never,
       delta: 'new',
@@ -109,6 +136,7 @@ describe('fileEditModel provisional diffs', () => {
     // baseContent arrives BEFORE ToolInputReady (the fix enables this)
     const withBase = fileEditModel.reduce(state, {
       _tag: 'ToolEmission',
+      ...baseEvent,
       value: {
         type: 'file_edit_base_content',
         path: 'f.ts',
@@ -124,10 +152,12 @@ describe('fileEditModel provisional diffs', () => {
   })
 
   test('inputReady uses parsed input values directly', () => {
-    const started = fileEditModel.reduce(fileEditModel.initial, { _tag: 'ToolInputStarted' })
+    const started = fileEditModel.reduce(fileEditModel.initial, { _tag: 'ToolInputStarted', ...baseEvent })
 
     let state = fileEditModel.reduce(started, {
       _tag: 'ToolInputFieldChunk',
+      toolCallId,
+      providerToolCallId,
       field: 'old',
       path: ['old'] as unknown as never,
       delta: 'wrong-old',
@@ -135,14 +165,13 @@ describe('fileEditModel provisional diffs', () => {
 
     const withInputReady = fileEditModel.reduce(state, {
       _tag: 'ToolInputReady',
-      toolCallId: 'tc1',
+      toolCallId,
+      providerToolCallId,
     })
 
     const withExecStarted = fileEditModel.reduce(withInputReady, {
       _tag: 'ToolExecutionStarted',
-      toolCallId: 'tc1',
-      toolName: 'edit',
-      toolKey: 'fileEdit',
+      ...baseEvent,
       input: {
         path: 'f.ts',
         old: 'old',
@@ -161,6 +190,7 @@ describe('fileEditModel provisional diffs', () => {
 
     const withBase = fileEditModel.reduce(withExecStarted, {
       _tag: 'ToolEmission',
+      ...baseEvent,
       value: {
         type: 'file_edit_base_content',
         path: 'f.ts',

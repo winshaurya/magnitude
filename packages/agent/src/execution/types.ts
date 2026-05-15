@@ -17,7 +17,6 @@ import type { ForkTurnState } from '../projections/turn'
 import type { SessionContextState } from '../projections/session-context'
 import type { ConversationState } from '../projections/conversation'
 import type { ApprovalStateService } from './approval-state'
-import type { BrowserService } from '../services/browser-service'
 import type { ChatPersistence } from '../persistence/chat-persistence-service'
 import type { BoundObservable } from '../observables/types'
 import type { JsonSchema } from '@magnitudedev/llm-core'
@@ -99,7 +98,7 @@ export interface ExecutionManagerService {
   ) => Effect.Effect<
     void,
     never,
-    Projection.ProjectionInstance<SessionContextState> | Projection.ProjectionInstance<AgentRoutingState> | Projection.ProjectionInstance<AgentStatusState> | Projection.ForkedProjectionInstance<ForkTurnState> | Projection.ProjectionInstance<ConversationState> | ChatPersistence | BrowserService | WorkerBusService<AppEvent>
+    Projection.ProjectionInstance<SessionContextState> | Projection.ProjectionInstance<AgentRoutingState> | Projection.ProjectionInstance<AgentStatusState> | Projection.ForkedProjectionInstance<ForkTurnState> | Projection.ProjectionInstance<ConversationState> | ChatPersistence | WorkerBusService<AppEvent>
   >
 
   readonly disposeFork: (forkId: string) => Effect.Effect<void>
@@ -127,10 +126,8 @@ export interface ExecutionManagerService {
   }) => Effect.Effect<
     string,
     never,
-    Projection.ProjectionInstance<SessionContextState> | Projection.ProjectionInstance<AgentRoutingState> | Projection.ProjectionInstance<AgentStatusState> | Projection.ForkedProjectionInstance<ForkTurnState> | Projection.ProjectionInstance<ConversationState> | ChatPersistence | BrowserService | WorkerBusService<AppEvent>
+    Projection.ProjectionInstance<SessionContextState> | Projection.ProjectionInstance<AgentRoutingState> | Projection.ProjectionInstance<AgentStatusState> | Projection.ForkedProjectionInstance<ForkTurnState> | Projection.ProjectionInstance<ConversationState> | ChatPersistence | WorkerBusService<AppEvent>
   >
-
-  readonly releaseBrowserFork: (forkId: string) => Effect.Effect<void>
 
   readonly approvalState: ApprovalStateService
 }

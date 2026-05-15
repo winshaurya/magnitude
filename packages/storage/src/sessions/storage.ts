@@ -1,5 +1,4 @@
-import { lstat, readlink, rm, symlink } from 'node:fs/promises'
-import { basename, extname, join, resolve } from 'node:path'
+import { basename, extname, join } from 'node:path'
 
 import { generateSortableId } from '@magnitudedev/generate-id'
 
@@ -108,34 +107,13 @@ export async function readSessionEventsFromPath<T>(
   return readJsonLines<T>(eventsPath)
 }
 
-export async function createSessionWorkspace(
+export async function createSessionScratchpad(
   paths: GlobalStoragePaths,
   sessionId: string,
-  cwd: string
 ): Promise<string> {
-  const workspacePath = paths.sessionWorkspace(sessionId)
-  const projectLinkPath = join(workspacePath, 'project')
-
-  await ensureDir(workspacePath)
-
-  try {
-    const stat = await lstat(projectLinkPath)
-    if (stat.isSymbolicLink()) {
-      const existingTarget = await readlink(projectLinkPath)
-      const resolvedTarget = resolve(workspacePath, existingTarget)
-      if (resolvedTarget === cwd) {
-        return workspacePath
-      }
-    }
-    await rm(projectLinkPath, { recursive: true, force: true })
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw error
-    }
-  }
-
-  await symlink(cwd, projectLinkPath, process.platform === 'win32' ? 'junction' : 'dir')
-  return workspacePath
+  const scratchpadPath = paths.sessionScratchpad(sessionId)
+  await ensureDir(scratchpadPath)
+  return scratchpadPath
 }
 
 export function createMemoryExtractionJobRecord(params: {

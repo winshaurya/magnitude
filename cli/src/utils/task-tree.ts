@@ -7,7 +7,7 @@ type TaskRecord = {
   childIds: readonly string[]
   assignee: unknown
   worker: { agentId: string; forkId: string; role: string } | null
-  status: 'pending' | 'working' | 'completed'
+  status: 'pending' | 'completed'
   createdAt: number
   updatedAt: number
   completedAt: number | null

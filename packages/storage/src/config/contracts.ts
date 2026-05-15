@@ -15,8 +15,6 @@ export interface ConfigStorageShape<TSlot extends string> {
     policy: ContextLimitPolicy
   ) => Effect.Effect<void>
 
-  readonly getTelemetryEnabled: () => Effect.Effect<boolean>
-  readonly setTelemetryEnabled: (value: boolean) => Effect.Effect<void>
 }
 
 export const ConfigStorage = Context.GenericTag<ConfigStorageShape<string>>('ConfigStorage')

@@ -9,8 +9,21 @@ export type { StorageClient } from '@magnitudedev/storage'
 // Agent
 export { CodingAgent, createCodingAgentClient } from './coding-agent'
 export type { CreateClientOptions } from './coding-agent'
-export { fetchRoleProfiles, type RoleProfile } from './role-profiles'
-export { fetchUsageWindows, type UsageWindowsResponse } from './usage'
+export { fetchRoleProfiles, fetchPublicRoleProfiles, type RoleProfile } from './role-profiles'
+export { fetchBalance, type BalanceResponse, type UsagePeriod, type FetchBalanceOptions } from './usage'
+
+// Errors
+export {
+  classifyUnknownError,
+  mapConnectionErrorToOutcome,
+  mapStreamErrorToOutcome,
+  present,
+  type ErrorPresentation,
+  type ErrorSurface,
+  type ErrorSeverity,
+  type ErrorCta,
+  type ActionId,
+} from './errors'
 
 // Events
 export type {
@@ -63,19 +76,19 @@ export type { CollectSessionContextOptions } from './util/collect-session-contex
 export { loadSkills } from '@magnitudedev/skills'
 export type { Skill } from '@magnitudedev/skills'
 
-// Workspace
-export * from './workspace'
+// Scratchpad
+export * from './scratchpad'
 
 // Projections
-export { WindowProjection } from './projections/window'
-export type { WindowEntry, WindowEntrySource, ForkWindowState } from './projections/window'
-export type { QueuedEntry } from './inbox/types'
+export { WindowProjection } from './window'
+export type { WindowEntry, WindowEntrySource, ForkWindowState } from './window'
+export type { QueuedEntry } from './window/inbox/types'
 
 export { CompactionProjection } from './projections/compaction'
 export type { CompactionState } from './projections/compaction'
 
-export { ToolStateProjection } from './projections/tool-state'
-export type { ToolStateProjectionState } from './projections/tool-state'
+export { HarnessStateProjection, getToolHandlesRecord } from './projections/harness-state'
+export type { TurnState } from '@magnitudedev/harness'
 
 export { TaskWorkerProjection } from './projections/task-worker'
 export type {
@@ -108,7 +121,6 @@ export type {
   PendingInboundCommunicationDisplay,
 } from './projections/display'
 
-export { ReplayProjection } from './projections/replay'
 export { TurnProjection } from './projections/turn'
 export type { ToolCall, TurnTrigger, PendingInboundCommunication, ForkTurnState } from './projections/turn'
 
@@ -136,7 +148,7 @@ export { SessionContextProjection } from './projections/session-context'
 export type { SessionContextState } from './projections/session-context'
 
 
-export { TaskGraphProjection, getPrimaryRootTask, getSessionTitleFromTaskGraph } from './projections/task-graph'
+export { TaskGraphProjection, getPrimaryRootTask, getSessionTitleFromTaskGraph, canTransition, isTaskStatus } from './projections/task-graph'
 export type { TaskGraphState, TaskRecord, TaskStatus, TaskWorkerInfo } from './projections/task-graph'
 
 // Line-edit types
@@ -165,11 +177,6 @@ export { readTool, writeTool, editTool, treeTool, grepTool, fsTools } from './to
 // webSearchTool disabled — awaiting Exa reimplementation
 export { webFetchTool } from './tools/web-fetch-tool'
 
-export {
-  clickTool, doubleClickTool, rightClickTool, typeTool, scrollTool, dragTool,
-  navigateTool, goBackTool, switchTabTool, newTabTool, screenshotTool, evaluateTool,
-  browserTools,
-} from './tools/browser-tools'
 export type { AgentStateReader } from './tools/fork'
 
 // Workers
@@ -202,7 +209,7 @@ export {
 export type { SerializedEvent } from './serialization'
 
 // Debug Introspection
-// debug-introspection service removed (depends on ReplayProjection — scheduled rewrite)
+
 // Types are still exported for CLI debug panel
 export type { DebugSnapshot, ProjectionSnapshot, ContextUsage } from './projections/debug-introspection'
 
@@ -222,3 +229,6 @@ export { createTraceListenerLayer, makeNoopTraceListener, makeTestTraceListener 
 export type { AgentTraceContext, TraceStore } from './tracing'
 export type { UserPart, TextPart, ImagePart, ImageMediaType } from '@magnitudedev/ai'
 export { textParts, textOf, hasImages, wrapTextParts } from './content'
+
+// Image description (vision preprocessing for non-vision models)
+export { configure as configureImageDescription, startImageDescription, cancelImageDescription, resolveImageDescriptions } from './util/describe-image'

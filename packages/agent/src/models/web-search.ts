@@ -33,7 +33,7 @@ export const webSearchModel = defineStateModel(webSearchTool)<WebSearchState>({
             return { ...state, phase: 'completed', sources: event.result.output.sources ?? [] }
           case 'Error':
             return { ...state, phase: 'error', errorDetail: event.result.error.message }
-          case 'Rejected':
+          case 'Denied':
             return { ...state, phase: 'rejected' }
           case 'Interrupted':
             return { ...state, phase: 'interrupted' }
@@ -41,7 +41,7 @@ export const webSearchModel = defineStateModel(webSearchTool)<WebSearchState>({
             return state
         }
       }
-      case 'ToolInputDecodeFailed':
+      case 'ToolInputRejected':
         return { ...state, phase: 'error', errorDetail: event.issue.message }
       case 'ToolEmission':
       case 'ToolInputFieldComplete':

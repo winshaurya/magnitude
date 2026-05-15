@@ -50,6 +50,7 @@ export type ChatControllerServices = {
 
 
 export type SubscribeForkCompaction = (forkId: string, cb: (state: CompactionState) => void) => () => void
+export type SubscribeForkWindow = (forkId: string, cb: (state: { tokenEstimate: number }) => void) => () => void
 
 export type ChatControllerProps = {
   env: ChatControllerEnv
@@ -60,6 +61,7 @@ export type ChatControllerProps = {
   pushForkOverlay: (forkId: string) => void
   roleProfiles: Partial<Record<RoleId, RoleProfile>> | null
   subscribeForkCompaction: SubscribeForkCompaction
+  subscribeForkWindow: SubscribeForkWindow
   isBlockingOverlayActive: boolean
   selectedFileOpen: boolean
   onCloseFilePanel: () => void

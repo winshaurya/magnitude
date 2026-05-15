@@ -1,7 +1,5 @@
 import type { CliRenderer } from '@opentui/core'
 import { logger } from '@magnitudedev/logger'
-import { trackSessionEnd, shutdownTelemetry } from '@magnitudedev/telemetry'
-import { getSessionTracker } from './telemetry-state'
 
 let cleanupRan = false
 
@@ -36,13 +34,6 @@ async function performCleanupAndExit(
       await beforeExit()
     } catch {}
   }
-
-  // Emit session_end telemetry and flush PostHog
-  const tracker = getSessionTracker()
-  if (tracker) {
-    trackSessionEnd(tracker.getSummary())
-  }
-  await shutdownTelemetry()
 
   restoreTerminalState()
   renderer.destroy()

@@ -5,9 +5,7 @@ type OverlayKind =
   | 'recent-chats'
   | 'fork-detail'
   | 'settings'
-  | 'setup-browser'
   | 'setup-wizard'
-  | 'browser-setup'
   | 'auth-method'
   | 'provider-endpoint'
   | 'api-key'
@@ -29,9 +27,7 @@ test('Ctrl+R is ignored for non-recent-chats overlays', () => {
   const blockedKinds: OverlayKind[] = [
     'fork-detail',
     'settings',
-    'setup-browser',
     'setup-wizard',
-    'browser-setup',
     'auth-method',
     'provider-endpoint',
     'api-key',

@@ -16,7 +16,7 @@ export function createScientistRole(): RoleDefinition {
     policy: [
       denyForbiddenCommands(),
       denyMutatingGit(),
-      denyWritesOutside(ctx => [ctx.cwd, ctx.workspacePath, join(homedir(), '.magnitude')]),
+      denyWritesOutside(ctx => [ctx.cwd, ctx.scratchpadPath, join(homedir(), '.magnitude')]),
       denyMassDestructiveIn(ctx => [join(homedir(), '.magnitude')]),
       allowAll(),
     ],

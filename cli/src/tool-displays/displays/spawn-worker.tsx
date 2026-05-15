@@ -13,7 +13,7 @@ export const spawnWorkerDisplay = createToolDisplay<SpawnWorkerState>({
   render: ({ state }) => {
     const theme = useTheme();
     const message = state.message ?? '';
-    const workerId = state.id ?? '';
+    const taskId = state.taskId ?? '';
     const isStreaming = state.phase === 'streaming' || state.phase === 'executing';
     const isError = state.phase === 'error' || state.phase === 'rejected' || state.phase === 'interrupted';
     const isCompleted = state.phase === 'completed';
@@ -25,8 +25,8 @@ export const spawnWorkerDisplay = createToolDisplay<SpawnWorkerState>({
       return (
         <text>
           <span style={{ fg: violet[300] }}>{'▶ '}</span>
-          <span style={{ fg: theme.muted }}>{'Worker started: '}</span>
-          <span style={{ fg: theme.foreground }}>{state.id}</span>
+          <span style={{ fg: theme.muted }}>{'Start worker '}</span>
+          <span style={{ fg: theme.foreground }}>{state.agentId}</span>
           {state.title && <span style={{ fg: theme.muted }}>{' — '}{state.title}</span>}
         </text>
       );
@@ -38,15 +38,15 @@ export const spawnWorkerDisplay = createToolDisplay<SpawnWorkerState>({
           {isError ? (
             <>
               <span style={{ fg: theme.error }}>{'✗ '}</span>
-              <span style={{ fg: theme.muted }}>{'Starting worker '}</span>
-              {workerId && <span style={{ fg: theme.foreground }}>{workerId}</span>}
+              <span style={{ fg: theme.muted }}>{'Start worker '}</span>
+              {taskId && <span style={{ fg: theme.foreground }}>{taskId}</span>}
               <span style={{ fg: theme.muted }}>{' with prompt'}</span>
               <span style={{ fg: theme.error }}>{' · Error'}</span>
             </>
           ) : (
             <>
-              <span style={{ fg: theme.muted }}>{'Starting worker '}</span>
-              {workerId && <span style={{ fg: theme.foreground }}>{workerId}</span>}
+              <span style={{ fg: theme.muted }}>{'Start worker '}</span>
+              {taskId && <span style={{ fg: theme.foreground }}>{taskId}</span>}
               <span style={{ fg: theme.muted }}>{' with prompt'}</span>
               <ShimmerText text="..." interval={SHIMMER_INTERVAL_MS} primaryColor={theme.muted} />
             </>
@@ -84,14 +84,14 @@ export const spawnWorkerDisplay = createToolDisplay<SpawnWorkerState>({
     );
   },
   summary: (state) => {
-    const id = state.id ? ` ${state.id}` : '';
+    const id = state.taskId ? ` ${state.taskId}` : '';
     if (state.phase === 'completed') {
-      return `Worker started: ${state.id}${state.title ? ` — ${state.title}` : ''}`;
+      return `Start worker${id}${state.title ? ` — ${state.title}` : ''}`;
     }
-    if (state.phase === 'streaming' || state.phase === 'executing') return `Starting worker${id} with prompt...`;
-    if (state.phase === 'error') return `Starting worker${id} with prompt · Error`;
-    if (state.phase === 'rejected') return `Starting worker${id} with prompt · Rejected`;
-    if (state.phase === 'interrupted') return `Starting worker${id} with prompt · Interrupted`;
-    return `Starting worker${id} with prompt`;
+    if (state.phase === 'streaming' || state.phase === 'executing') return `Start worker${id} with prompt...`;
+    if (state.phase === 'error') return `Start worker${id} with prompt · Error`;
+    if (state.phase === 'rejected') return `Start worker${id} with prompt · Rejected`;
+    if (state.phase === 'interrupted') return `Start worker${id} with prompt · Interrupted`;
+    return `Start worker${id} with prompt`;
   },
 });

@@ -82,8 +82,9 @@ describe('display subagent lifecycle think steps', () => {
         forkId: 'fork-sub',
         turnId: 't-sub-1',
         toolCallId: 'call-1',
+        providerToolCallId: 'call-1',
         toolKey: 'shell',
-        event: { _tag: 'ToolInputStarted' },
+        event: { _tag: 'ToolInputStarted', toolCallId: 'call-1', providerToolCallId: 'call-1', toolName: 'shell', toolKey: 'shell' },
       } as any,
       {
         type: 'turn_outcome',
@@ -109,8 +110,9 @@ describe('display subagent lifecycle think steps', () => {
         forkId: 'fork-sub',
         turnId: 't-sub-2',
         toolCallId: 'call-2',
+        providerToolCallId: 'call-2',
         toolKey: 'fileRead',
-        event: { _tag: 'ToolInputStarted' },
+        event: { _tag: 'ToolInputStarted', toolCallId: 'call-2', providerToolCallId: 'call-2', toolName: 'fileRead', toolKey: 'fileRead' },
       } as any,
       {
         type: 'turn_outcome',

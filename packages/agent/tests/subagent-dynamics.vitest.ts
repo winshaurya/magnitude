@@ -6,7 +6,7 @@ import { response } from '../src/test-harness/response-builder'
 import type { AppEvent } from '../src/events'
 
 const spawnXml = (id: string, title: string, message: string) =>
-  response().createTask(id, title).spawnWorker(id, message).yield().xml!
+  response().createTask(id, title).spawnWorker(id, 'engineer', id, message).yield().xml!
 
 describe('subagent dynamics', () => {
   it.live('Orchestrator creates subagent', () =>

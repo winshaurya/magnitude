@@ -4,7 +4,7 @@ import { SessionStorage } from './contracts'
 import {
   appendSessionEvents,
   createMemoryExtractionJobRecord,
-  createSessionWorkspace,
+  createSessionScratchpad,
   createTimestampSessionId,
   findLatestSessionId,
   listPendingMemoryJobFiles,
@@ -53,7 +53,7 @@ export function SessionStorageLive() {
           sessionMetaFile: globalStorage.paths.sessionMetaFile,
           sessionEventsFile: globalStorage.paths.sessionEventsFile,
           sessionLogFile: globalStorage.paths.sessionLogFile,
-          sessionWorkspace: globalStorage.paths.sessionWorkspace,
+          sessionScratchpad: globalStorage.paths.sessionScratchpad,
           pendingMemoryJobFile: globalStorage.paths.pendingMemoryJobFile,
         },
 
@@ -105,9 +105,9 @@ export function SessionStorageLive() {
             clearSessionLog(globalStorage.paths, sessionId)
           ),
 
-        createSessionWorkspace: (sessionId, cwd) =>
+        createSessionScratchpad: (sessionId) =>
           Effect.promise(() =>
-            createSessionWorkspace(globalStorage.paths, sessionId, cwd)
+            createSessionScratchpad(globalStorage.paths, sessionId)
           ),
 
         createMemoryExtractionJobRecord,

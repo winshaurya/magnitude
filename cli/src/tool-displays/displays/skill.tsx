@@ -27,13 +27,13 @@ export const skillDisplay = createToolDisplay<SkillActivationState>({
               <span style={{ fg: isError ? theme.error : theme.info }}>{isError ? '✗ ' : '[▸] '}</span>
               {isRunning ? (
                 <>
-                  <span style={{ fg: theme.foreground }}>{'Activating skill '}</span>
+                  <span style={{ fg: theme.foreground }}>{'Skill '}</span>
                   <span style={{ fg: isHovered && state.skillPath ? theme.link : theme.primary }} attributes={state.skillPath ? TextAttributes.UNDERLINE : undefined}>{state.skillName || '...'}</span>
                   <ShimmerText text=" ..." interval={SHIMMER_INTERVAL_MS} primaryColor={theme.info} />
                 </>
               ) : isError ? (
                 <>
-                  <span style={{ fg: theme.foreground }}>{'Activated skill '}</span>
+                  <span style={{ fg: theme.foreground }}>{'Skill '}</span>
                   <span style={{ fg: theme.muted }}>{state.skillName || 'skill'}</span>
                   <span style={{ fg: theme.error }}>{' · Error'}</span>
                   {state.errorDetail ? <span style={{ fg: theme.muted }}>{` (${state.errorDetail})`}</span> : null}
@@ -52,7 +52,6 @@ export const skillDisplay = createToolDisplay<SkillActivationState>({
   },
   summary: (state) => {
     const target = state.skillName ?? 'skill';
-    if (state.phase === 'streaming' || state.phase === 'executing') return `Activating skill ${target}`;
-    return `Skill activated ${target}`;
+    return `Skill ${target}`;
   },
 });

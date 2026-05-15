@@ -11,7 +11,6 @@ import { Effect } from 'effect'
 import { Worker } from '@magnitudedev/event-core'
 import type { AppEvent } from '../events'
 import { ExecutionManager } from '../execution/types'
-import { TurnProjection } from '../projections/turn'
 
 
 // =============================================================================
@@ -51,14 +50,6 @@ export const AgentLifecycle = Worker.define<AppEvent>()({
     subagent_idle_closed: (event) => Effect.gen(function* () {
       const execManager = yield* ExecutionManager
       yield* execManager.disposeFork(event.forkId)
-    }).pipe(Effect.orDie),
-
-    turn_outcome: (event, _publish, read) => Effect.gen(function* () {
-      if (event.forkId === null) return
-      const turnState = yield* read(TurnProjection)
-      if (turnState.triggers.length > 0) return
-      const execManager = yield* ExecutionManager
-      yield* execManager.releaseBrowserFork(event.forkId)
     }).pipe(Effect.orDie),
   },
 })

@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import type { ToolCallId } from "./ids"
+import type { ProviderToolCallId, ToolCallId } from "./ids"
 import {
   ImagePartSchema,
   TextPartSchema,
@@ -27,6 +27,7 @@ export interface AssistantMessage {
 export interface ToolResultMessage {
   readonly _tag: "ToolResultMessage"
   readonly toolCallId: ToolCallId
+  readonly providerToolCallId: ProviderToolCallId
   readonly toolName: string
   readonly parts: readonly ToolResultPart[]
 }
@@ -45,6 +46,7 @@ export const AssistantMessageSchema = Schema.TaggedStruct("AssistantMessage", {
 
 export const ToolResultMessageSchema = Schema.TaggedStruct("ToolResultMessage", {
   toolCallId: Schema.String,
+  providerToolCallId: Schema.String,
   toolName: Schema.String,
   parts: Schema.Array(UserPartSchema),
 })

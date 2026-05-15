@@ -6,7 +6,6 @@
 
 import { Effect, Context } from 'effect'
 import { Fork } from '@magnitudedev/event-core'
-import { PermissionRejection } from './permission-rejection'
 import type { RoleDefinition } from '@magnitudedev/roles'
 import { evaluatePolicy } from '@magnitudedev/roles'
 import type { ToolCallId } from '@magnitudedev/ai'
@@ -47,7 +46,7 @@ export function buildPolicyInterceptor(
       const policyCtx = yield* (yield* PolicyContextProviderTag).get
       const toolKey = getDefKey(ctx.meta)
       if (toolKey === null) {
-        return reject(PermissionRejection.Forbidden({ reason: 'Invalid tool metadata' }))
+        return deny('Invalid tool metadata')
       }
 
       const hookCtx: ExecuteHookContext & { policyContext: RolesPolicyContext } = {
@@ -57,7 +56,7 @@ export function buildPolicyInterceptor(
         input: ctx.input,
         policyContext: {
           cwd: policyCtx.cwd,
-          workspacePath: policyCtx.workspacePath,
+          scratchpadPath: policyCtx.scratchpadPath,
           disableShellSafeguards: policyCtx.disableShellSafeguards,
           disableCwdSafeguards: policyCtx.disableCwdSafeguards,
         },
@@ -74,6 +73,6 @@ function getDefKey(meta: unknown): string | null {
   return typeof m.defKey === 'string' ? m.defKey : null
 }
 
-function reject(rejection: unknown): InterceptorDecision {
-  return { _tag: 'Reject', rejection }
+function deny(message: string): InterceptorDecision<string> {
+  return { _tag: 'Deny', denial: message }
 }

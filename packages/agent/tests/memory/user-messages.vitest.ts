@@ -1,9 +1,12 @@
 import { describe, expect, it } from '@effect/vitest'
 import { Effect } from 'effect'
 import { TestHarness, TestHarnessLive } from '../../src/test-harness/harness'
-import { WindowProjection } from '../../src/projections/window'
+import { WindowProjection } from '../../src/window'
 import { SessionContextProjection } from '../../src/projections/session-context'
+import { AgentStatusProjection } from '../../src/projections/agent-status'
 import { windowToPrompt } from '../../src/prompts/window-to-prompt'
+import { createToolResultFormatter } from '@magnitudedev/harness'
+import { leaderToolkit } from '../../src/tools/toolkits'
 import { getRootMemory, inboxMessages, lastInboxMessage, snapshotMessageRefs, assertPrefixUnchanged, sendUserMessage } from './helpers'
 
 function renderedUserText(
@@ -17,7 +20,8 @@ function renderedUserText(
         Effect.map(p.get, s => s.context?.timezone ?? null),
       ),
     )
-    const prompt = windowToPrompt(memory, '', timezone, true)
+    const agentStatus = yield* h.projection(AgentStatusProjection.Tag)
+    const prompt = windowToPrompt(memory, '', timezone, agentStatus, createToolResultFormatter(leaderToolkit))
     return prompt.messages
       .filter(m => m._tag === 'UserMessage')
       .map(m => m.parts.map(p => p._tag === 'TextPart' ? p.text : '').join('\n'))

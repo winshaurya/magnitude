@@ -1,6 +1,7 @@
 import { RGBA, TextAttributes, type KeyEvent } from '@opentui/core'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Attachment, ImageAttachment, ImageMediaType } from '@magnitudedev/agent'
+import { startImageDescription, cancelImageDescription } from '@magnitudedev/agent'
 import { createId } from '@magnitudedev/generate-id'
 
 import { BOX_CHARS } from '../../utils/ui-constants'
@@ -162,6 +163,7 @@ export function ChatController(props: ChatControllerProps) {
     pushForkOverlay,
     roleProfiles,
     subscribeForkCompaction,
+    subscribeForkWindow,
     isBlockingOverlayActive,
     selectedFileOpen,
     onCloseFilePanel,
@@ -254,11 +256,6 @@ export function ChatController(props: ChatControllerProps) {
   }, [])
 
   const addImageAttachment = useCallback(async () => {
-    if (!env.supportsVision) {
-      const modelName = env.modelSummary?.model ?? 'this model'
-      services.showToast(`${modelName} does not support images`)
-      return false
-    }
     const result = await readClipboardBitmap()
     if (!result) return false
     const scaled = await autoScaleImageAttachmentIfNeeded({
@@ -269,31 +266,50 @@ export function ChatController(props: ChatControllerProps) {
       filename: 'clipboard-' + Date.now() + '.png',
     })
     const extension = scaled.mime === 'image/jpeg' ? '.jpg' : '.png'
-    setAttachments(prev => [...prev, {
+    const newAttachment: ImageAttachment = {
       type: 'image',
       base64: scaled.base64,
       mediaType: scaled.mime as ImageMediaType,
       width: scaled.width,
       height: scaled.height,
       filename: 'clipboard-' + Date.now() + extension,
-    }])
+    }
+    // Start vision preprocessing in the background immediately (only for non-vision models)
+    if (!env.supportsVision) {
+      const dataUrl = `data:${newAttachment.mediaType};base64,${newAttachment.base64}`
+      startImageDescription(dataUrl)
+    }
+    setAttachments(prev => [...prev, newAttachment])
     return true
-  }, [env.supportsVision, services])
+  }, [services, env.supportsVision])
 
   const addImageAttachmentFromFilePath = useCallback(async (rawPasteText: string) => {
-    if (!env.supportsVision) {
-      const modelName = env.modelSummary?.model ?? 'this model'
-      services.showToast(`${modelName} does not support images`)
-      return false
-    }
     return addImageAttachmentsFromPastedText({
       rawPasteText,
-      appendAttachments: (newAttachments) => setAttachments(prev => [...prev, ...newAttachments]),
+      appendAttachments: (newAttachments) => {
+        // Start vision preprocessing for each new image attachment (only for non-vision models)
+        if (!env.supportsVision) {
+          for (const a of newAttachments) {
+            if (a.type === 'image') {
+              const dataUrl = `data:${a.mediaType};base64,${a.base64}`
+              startImageDescription(dataUrl)
+            }
+          }
+        }
+        setAttachments(prev => [...prev, ...newAttachments])
+      },
     })
-  }, [env.supportsVision, services])
+  }, [services, env.supportsVision])
 
   const removeAttachment = useCallback((index: number) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index))
+    setAttachments(prev => {
+      const removed = prev[index]
+      if (removed?.type === 'image') {
+        const dataUrl = `data:${removed.mediaType};base64,${removed.base64}`
+        cancelImageDescription(dataUrl)
+      }
+      return prev.filter((_, i) => i !== index)
+    })
   }, [])
 
   const executeSlashCommand = useCallback((commandText: string) => {
@@ -544,6 +560,7 @@ export function ChatController(props: ChatControllerProps) {
           pushForkOverlay={pushForkOverlay}
           roleProfiles={roleProfiles}
           subscribeForkCompaction={subscribeForkCompaction}
+          subscribeForkWindow={subscribeForkWindow}
         />
         <box style={{ borderStyle: 'single', border: ['left'], borderColor: env.bashMode ? orange[400] : env.modeColor, customBorderChars: { ...BOX_CHARS, vertical: '┃' } }}>
           <box style={{ backgroundColor: env.theme.inputBg, paddingTop: 1, paddingLeft: 1, paddingRight: 2, flexDirection: 'column', flexGrow: 1 }}>

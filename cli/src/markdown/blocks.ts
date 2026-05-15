@@ -291,13 +291,13 @@ function renderInline(
         const rawPath = hashIndex >= 0 ? node.url.slice(0, hashIndex) : node.url
         const rawSection = hashIndex >= 0 ? node.url.slice(hashIndex + 1) : undefined
         const section = rawSection ? rawSection : undefined
-        const workspacePrefix = '$M/'
-        const normalizedPath = rawPath.startsWith(workspacePrefix)
-          ? normalizeReferencedPath(rawPath.slice(workspacePrefix.length))
+        const scratchpadPrefix = '$M/'
+        const normalizedPath = rawPath.startsWith(scratchpadPrefix)
+          ? normalizeReferencedPath(rawPath.slice(scratchpadPrefix.length))
           : normalizeReferencedPath(rawPath)
 
         if (normalizedPath) {
-          const resolvedPath = rawPath.startsWith(workspacePrefix) ? `${workspacePrefix}${normalizedPath}` : normalizedPath
+          const resolvedPath = rawPath.startsWith(scratchpadPrefix) ? `${scratchpadPrefix}${normalizedPath}` : normalizedPath
           spans.push(...childSpans.map((span) => ({ ...span, fileRef: { path: resolvedPath, section } })))
           break
         }

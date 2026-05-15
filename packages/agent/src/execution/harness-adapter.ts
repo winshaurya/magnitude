@@ -11,6 +11,7 @@ import type {
   HarnessEvent,
   ToolLifecycleEvent,
 } from '@magnitudedev/harness'
+import type { ProviderToolCallId } from '@magnitudedev/ai'
 import {
   type AppEvent,
   type MessageDestination,
@@ -42,14 +43,7 @@ export interface HarnessAdapterConfig {
   readonly chainId: string
   readonly roleId: RoleId
   readonly defaultProseDest: MessageDestination
-  readonly triggeredByUser: boolean
   readonly publish: (event: AppEvent) => Effect.Effect<void>
-  readonly handleTaskDirective: (directive: {
-    readonly kind: 'message'
-    readonly defaultTopLevelDestination: 'user' | 'parent'
-    readonly triggeredByUser: boolean
-    readonly directUserRepliesSent: number
-  }) => Effect.Effect<{ success: boolean; directUserRepliesSent?: number }>
   readonly identicalResponseTracker: IdenticalResponseTracker | null
   /** Resolve a tool's model-facing name to the internal catalog key. */
   readonly resolveToolKey: (toolName: string) => ToolKey | undefined
@@ -68,9 +62,7 @@ export function createHarnessAdapter(config: HarnessAdapterConfig): HarnessAdapt
     forkId,
     turnId,
     defaultProseDest,
-    triggeredByUser,
     publish,
-    handleTaskDirective,
     resolveToolKey,
   } = config
 
@@ -83,7 +75,6 @@ export function createHarnessAdapter(config: HarnessAdapterConfig): HarnessAdapt
   let lastToolKey: ToolKey | null = null
   let hasToolErrors = false
   let hasAnyResponseContent = false
-  let directUserRepliesSent = 0
 
   // toolCallId → ToolKey tracking
   const toolCallKeys = new Map<string, ToolKey>()
@@ -112,12 +103,13 @@ export function createHarnessAdapter(config: HarnessAdapterConfig): HarnessAdapt
     return defaultProseDest
   }
 
-  const emitToolEvent = (toolCallId: string, toolKey: ToolKey, event: ToolLifecycleEvent): Effect.Effect<void> =>
+  const emitToolEvent = (toolCallId: string, providerToolCallId: ProviderToolCallId, toolKey: ToolKey, event: ToolLifecycleEvent): Effect.Effect<void> =>
     publish({
       type: 'tool_event' as const,
       forkId,
       turnId,
       toolCallId,
+      providerToolCallId,
       toolKey,
       event,
     })
@@ -167,28 +159,6 @@ export function createHarnessAdapter(config: HarnessAdapterConfig): HarnessAdapt
 
           const destination = resolveDestination()
 
-          // Run task directive for non-worker messages
-          if (destination.kind !== 'worker') {
-            const directiveResult = yield* handleTaskDirective({
-              kind: 'message',
-              defaultTopLevelDestination: destination.kind === 'user' ? 'user' : 'parent',
-              triggeredByUser,
-              directUserRepliesSent,
-            })
-
-            if (!directiveResult.success) {
-              currentMessageId = null
-              break
-            }
-
-            if (
-              directiveResult.directUserRepliesSent !== undefined
-              && typeof directiveResult.directUserRepliesSent === 'number'
-            ) {
-              directUserRepliesSent = directiveResult.directUserRepliesSent
-            }
-          }
-
           yield* publish({
             type: 'message_start',
             forkId,
@@ -230,7 +200,7 @@ export function createHarnessAdapter(config: HarnessAdapterConfig): HarnessAdapt
           const toolKey = resolveToolKey(event.toolName)
           if (!toolKey) break
           toolCallKeys.set(event.toolCallId, toolKey)
-          yield* emitToolEvent(event.toolCallId, toolKey, event)
+          yield* emitToolEvent(event.toolCallId, event.providerToolCallId, toolKey, event)
           break
         }
 
@@ -238,21 +208,28 @@ export function createHarnessAdapter(config: HarnessAdapterConfig): HarnessAdapt
           const toolKey = toolCallKeys.get(event.toolCallId)
           if (!toolKey) break
           contentFingerprint += event.delta
-          yield* emitToolEvent(event.toolCallId, toolKey, event)
+          yield* emitToolEvent(event.toolCallId, event.providerToolCallId, toolKey, event)
           break
         }
 
         case 'ToolInputFieldComplete': {
           const toolKey = toolCallKeys.get(event.toolCallId)
           if (!toolKey) break
-          yield* emitToolEvent(event.toolCallId, toolKey, event)
+          yield* emitToolEvent(event.toolCallId, event.providerToolCallId, toolKey, event)
           break
         }
 
         case 'ToolInputReady': {
           const toolKey = toolCallKeys.get(event.toolCallId)
           if (!toolKey) break
-          yield* emitToolEvent(event.toolCallId, toolKey, event)
+          yield* emitToolEvent(event.toolCallId, event.providerToolCallId, toolKey, event)
+          break
+        }
+
+        case 'ToolInputRejected': {
+          const toolKey = toolCallKeys.get(event.toolCallId)
+          if (!toolKey) break
+          yield* emitToolEvent(event.toolCallId, event.providerToolCallId, toolKey, event)
           break
         }
 
@@ -260,14 +237,14 @@ export function createHarnessAdapter(config: HarnessAdapterConfig): HarnessAdapt
         case 'ToolExecutionStarted': {
           const toolKey = toolCallKeys.get(event.toolCallId)
           if (!toolKey) break
-          yield* emitToolEvent(event.toolCallId, toolKey, event)
+          yield* emitToolEvent(event.toolCallId, event.providerToolCallId, toolKey, event)
           break
         }
 
         case 'ToolEmission': {
           const toolKey = toolCallKeys.get(event.toolCallId)
           if (!toolKey) break
-          yield* emitToolEvent(event.toolCallId, toolKey, event)
+          yield* emitToolEvent(event.toolCallId, event.providerToolCallId, toolKey, event)
           break
         }
 
@@ -292,14 +269,7 @@ export function createHarnessAdapter(config: HarnessAdapterConfig): HarnessAdapt
             }
           }
 
-          yield* emitToolEvent(event.toolCallId, toolKey, event)
-          break
-        }
-
-        case 'ToolResultFormatted': {
-          const toolKey = toolCallKeys.get(event.toolCallId)
-          if (!toolKey) break
-          yield* emitToolEvent(event.toolCallId, toolKey, event)
+          yield* emitToolEvent(event.toolCallId, event.providerToolCallId, toolKey, event)
           break
         }
 
@@ -350,6 +320,7 @@ export function createHarnessAdapter(config: HarnessAdapterConfig): HarnessAdapt
                 error: {
                   _tag: 'ToolInputDecodeFailure' as const,
                   toolCallId: outcome.toolCallId,
+                  providerToolCallId: outcome.providerToolCallId,
                   toolName: outcome.toolName,
                   issue: outcome.issue,
                   inputSchema: outcome.inputSchema,
@@ -360,7 +331,38 @@ export function createHarnessAdapter(config: HarnessAdapterConfig): HarnessAdapt
             }
 
             case 'GateRejected': {
-              executionResult = completed(1)
+              executionResult = {
+                _tag: 'GateRejected',
+                toolCallId: outcome.toolCallId,
+                providerToolCallId: outcome.providerToolCallId,
+                toolName: outcome.toolName,
+              }
+              break
+            }
+
+            case 'ToolExecutionError': {
+              // Tool execution failed — chain-continue so the model can respond to the error.
+              executionResult = {
+                _tag: 'ToolExecutionError',
+                toolCallId: outcome.toolCallId,
+                providerToolCallId: outcome.providerToolCallId,
+                toolName: outcome.toolName,
+                toolKey: outcome.toolKey,
+                error: outcome.error,
+              }
+              break
+            }
+
+            case 'ToolInputValidationFailure': {
+              // Streaming validation failed — chain-continue so the model can respond to the error.
+              executionResult = {
+                _tag: 'ToolInputValidationFailure',
+                toolCallId: outcome.toolCallId,
+                providerToolCallId: outcome.providerToolCallId,
+                toolName: outcome.toolName,
+                toolKey: outcome.toolKey,
+                issue: outcome.issue,
+              }
               break
             }
 

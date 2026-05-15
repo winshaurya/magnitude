@@ -11,16 +11,16 @@ import { createId } from '../util/id'
 import { SessionContextProjection } from '../projections/session-context'
 import { TaskGraphProjection } from '../projections/task-graph'
 import { TurnProjection } from '../projections/turn'
-import { CanonicalTurnProjection } from '../projections/canonical-turn'
-import { WindowProjection } from '../projections/window'
+import { HarnessStateProjection } from '../projections/harness-state'
+import { WindowProjection } from '../window'
 import { SubagentActivityProjection } from '../projections/subagent-activity'
 import { DisplayProjection } from '../projections/display'
-import { ToolStateProjection } from '../projections/tool-state'
+
 import { TaskWorkerProjection } from '../projections/task-worker'
 import { AgentRoutingProjection } from '../projections/agent-routing'
 import { AgentStatusProjection } from '../projections/agent-status'
 import { CompactionProjection } from '../projections/compaction'
-import { ReplayProjection } from '../projections/replay'
+
 import { ConversationProjection } from '../projections/conversation'
 import { UserPresenceProjection } from '../projections/user-presence'
 import { OutboundMessagesProjection } from '../projections/outbound-messages'
@@ -33,14 +33,13 @@ import { AgentLifecycle } from '../workers/agent-lifecycle'
 import { LifecycleCoordinator } from '../workers/lifecycle-coordinator'
 import { ApprovalWorker } from '../workers/approval-worker'
 import { Autopilot } from '../workers/autopilot'
-import { CompactionWorker } from '../workers/compaction-worker'
+import { CompactionWorker } from '../compaction/worker'
 import { UserPresenceWorker } from '../workers/user-presence-worker'
 import { FileMentionResolver } from '../workers/file-mention-resolver'
 import { SessionTitleWorker } from '../workers/session-title-worker'
 
 // Runtime/services
 import { ExecutionManagerLive } from '../execution/execution-manager'
-import { BrowserService } from '../services/browser-service'
 import type { RoleId } from '../agents/role-validation'
 import { registerApprovalBridge } from '../execution/approval-bridge'
 import { makeTestModelResolver } from './test-resolver'
@@ -48,7 +47,7 @@ import type { TestModelConfig } from './test-model'
 
 // Testing services
 import { InMemoryChatPersistenceTag, makeInMemoryChatPersistenceLayer } from './in-memory-persistence'
-import { MockCortex } from './mock-cortex'
+import { MockCortex, ForkTrackersLive } from './mock-cortex'
 import { MockTurnScriptTag, MockTurnScriptLive, createScriptGate, type MockTurnResponse, type MockTurnScriptResolver, type ScriptGate } from './turn-script'
 import { response as standaloneResponse } from './response-builder'
 import { createTurnsBuilder } from './scenario-builder'
@@ -99,6 +98,7 @@ export interface HarnessOptions {
   }
   workers?: {
     turnController?: boolean
+    cortex?: boolean
     autopilot?: boolean
     compaction?: boolean
     userPresence?: boolean
@@ -199,7 +199,7 @@ function defaultSessionContext(overrides: Partial<SessionContext> = {}): Session
     shell: process.env.SHELL ?? '/bin/zsh',
     timezone: 'UTC',
     username: process.env.USER ?? 'tester',
-    workspacePath: '/tmp/test-workspace',
+    scratchpadPath: '/tmp/test-scratchpad',
     fullName: null,
     git: null,
     folderStructure: '.',
@@ -222,7 +222,7 @@ export async function createAgentTestHarness(options: HarnessOptions = {}) {
   try {
     const workers = [
       ...(options.workers?.turnController !== false ? [TurnController] : []),
-      MockCortex,
+      ...(options.workers?.cortex !== false ? [MockCortex] : []),
       AgentLifecycle,
       LifecycleCoordinator,
       ApprovalWorker,
@@ -243,13 +243,12 @@ export async function createAgentTestHarness(options: HarnessOptions = {}) {
         CompactionProjection,
         TaskGraphProjection,
         TurnProjection,
-        CanonicalTurnProjection,
+        HarnessStateProjection,
 
-        ReplayProjection,
         SubagentActivityProjection,
         OutboundMessagesProjection,
         UserMessageResolutionProjection,
-        ToolStateProjection,
+
         TaskWorkerProjection,
         WindowProjection,
         DisplayProjection,
@@ -263,7 +262,7 @@ export async function createAgentTestHarness(options: HarnessOptions = {}) {
         },
         state: {
           display: DisplayProjection,
-          toolState: ToolStateProjection,
+          toolState: HarnessStateProjection,
           taskWorker: TaskWorkerProjection,
           turn: TurnProjection,
           memory: WindowProjection,
@@ -309,10 +308,6 @@ export async function createAgentTestHarness(options: HarnessOptions = {}) {
     const fakeClock = options.clock === 'fake' ? createFakeClock() : null
 
     const testModelResolverLayer = makeTestModelResolver(options.model ?? {})
-    const stubBrowserServiceLayer = Layer.succeed(BrowserService, {
-      get: () => Effect.die(new Error('BrowserService not available in tests')),
-      release: () => Effect.die(new Error('BrowserService not available in tests')),
-    })
     const ephemeralSessionContextLayer = Layer.succeed(EphemeralSessionContextTag, {
       disableShellSafeguards: false,
       disableCwdSafeguards: false,
@@ -320,15 +315,15 @@ export async function createAgentTestHarness(options: HarnessOptions = {}) {
     const fsLayer = createVirtualFsLayer(
       files,
       options.sessionContext?.cwd ?? process.cwd(),
-      options.sessionContext?.workspacePath ?? '/tmp/test-workspace',
+      options.sessionContext?.scratchpadPath ?? '/tmp/test-scratchpad',
     )
 
     const runtimeLayer = Layer.mergeAll(
       Layer.provide(ExecutionManagerLive, ephemeralSessionContextLayer),
-      stubBrowserServiceLayer,
       testModelResolverLayer,
       fsLayer,
       MockTurnScriptLive,
+      ForkTrackersLive,
       basePersistenceLayer,
       faultWrappedPersistenceLayer,
       ...(fakeClock ? [fakeClock.layer] : []),
@@ -337,6 +332,11 @@ export async function createAgentTestHarness(options: HarnessOptions = {}) {
     const client = await TestCodingAgent.createClient(runtimeLayer)
 
     await client.runEffect(registerApprovalBridge)
+
+    // Publish toolkit ambient so HarnessStateProjection can create tool handles
+    const { publishToolkit } = await import('../ambient/toolkit-ambient')
+    const { leaderToolkit } = await import('../tools/toolkits')
+    await client.runEffect(publishToolkit(leaderToolkit))
 
     const transcript: AppEvent[] = []
     const listeners = new Set<(e: AppEvent) => void>()
@@ -521,10 +521,9 @@ export async function createAgentTestHarness(options: HarnessOptions = {}) {
       turns: () => createTurnsBuilder(builtHarness),
       inspect: {
         context: async (forkId: string | null = null): Promise<ContextSnapshot> => {
-          const [memory, sessionContext, compaction] = await Promise.all([
+          const [memory, sessionContext] = await Promise.all([
             client.runEffect(Effect.flatMap(WindowProjection.Tag, (projection) => projection.getFork(forkId))),
             client.runEffect(Effect.flatMap(SessionContextProjection.Tag, (projection) => projection.get)),
-            client.runEffect(Effect.flatMap(CompactionProjection.Tag, (projection) => projection.getFork(forkId))),
           ])
 
           const messages = memory.messages.map((msg) => {
@@ -550,7 +549,7 @@ export async function createAgentTestHarness(options: HarnessOptions = {}) {
 
           return {
             messages,
-            tokenEstimate: compaction.tokenEstimate,
+            tokenEstimate: memory.tokenEstimate,
           }
         },
         projections: async (): Promise<Record<string, unknown>> => {
@@ -602,9 +601,9 @@ export async function createAgentTestHarness(options: HarnessOptions = {}) {
           })
         },
         waitReady: (forkId: string | null = null) =>
-          waitEvent('compaction_ready', (e) => e.forkId === forkId),
+          waitEvent('compaction_prepared', (e) => e.forkId === forkId),
         waitCompleted: (forkId: string | null = null) =>
-          waitEvent('compaction_completed', (e) => e.forkId === forkId),
+          waitEvent('compaction_injected', (e) => e.forkId === forkId),
         assertNotBlocked: async (forkId: string | null = null): Promise<void> => {
           const compaction = await client.runEffect(
             Effect.flatMap(CompactionProjection.Tag, (projection) => projection.getFork(forkId))

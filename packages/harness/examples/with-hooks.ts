@@ -57,7 +57,7 @@ const hooks: HarnessHooks = {
       if (ctx.toolName === "run_shell") {
         const input = ctx.input as { command: string }
         if (input.command.includes("rm -rf")) {
-          return { _tag: "Reject" as const, rejection: "Dangerous command blocked" }
+          return { _tag: "Deny" as const, denial: "Dangerous command blocked" }
         }
       }
       return { _tag: "Proceed" as const }
@@ -115,7 +115,8 @@ const program = Effect.gen(function* () {
     }),
   )
 
-  const canonical = yield* Ref.get(turn.canonicalTurn)
+  const state = yield* Ref.get(turn.state)
+  const canonical = state.canonical
   console.log(`\nTool results: ${canonical.toolResults.length}`)
   console.log(`Outcome: ${canonical.outcome?._tag}`)
 })

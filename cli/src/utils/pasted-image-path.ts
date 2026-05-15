@@ -95,7 +95,7 @@ function normalizePastedPath(raw: string): string | null {
     }
   }
 
-  value = value.replace(/\\ /g, ' ')
+  value = value.replace(/\\([^\w])/g, '$1')
 
   if (value.startsWith('~')) {
     if (value === '~') value = os.homedir()
@@ -141,7 +141,7 @@ export function extractPastedPathCandidates(rawPasteText: string): string[] {
   }
 
   const shellWordTokens = tokenizeShellWords(raw)
-  if (shellWordTokens.length > 1) {
+  if (shellWordTokens.length > 0) {
     return dedupeOrdered(
       shellWordTokens
         .map(token => normalizePastedPath(token))

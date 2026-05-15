@@ -47,7 +47,7 @@ export const fileTreeModel = defineStateModel(treeTool)<FileTreeState>({
           }
           case 'Error':
             return { ...state, phase: 'error', errorDetail: event.result.error.message }
-          case 'Rejected':
+          case 'Denied':
             return { ...state, phase: 'rejected' }
           case 'Interrupted':
             return { ...state, phase: 'interrupted' }
@@ -55,7 +55,7 @@ export const fileTreeModel = defineStateModel(treeTool)<FileTreeState>({
             return state
         }
       }
-      case 'ToolInputDecodeFailed':
+      case 'ToolInputRejected':
         return { ...state, phase: 'error', errorDetail: event.issue.message }
       case 'ToolEmission':
       case 'ToolInputFieldComplete':

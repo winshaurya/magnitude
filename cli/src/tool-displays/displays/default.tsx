@@ -42,7 +42,7 @@ export const defaultDisplay = createToolDisplay<BaseState>({
     );
   },
   summary: (state) => {
-    if (state.phase === 'streaming' || state.phase === 'executing') return 'Running tool';
+    if (state.phase === 'streaming' || state.phase === 'executing') return 'Run tool';
     if (state.phase === 'error') return 'Tool error';
     if (state.phase === 'rejected') return 'Tool rejected';
     if (state.phase === 'interrupted') return 'Tool interrupted';

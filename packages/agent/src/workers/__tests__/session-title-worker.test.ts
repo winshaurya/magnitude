@@ -35,7 +35,7 @@ describe('SessionTitleWorker', () => {
         forkId: null,
         context: {
           cwd: process.cwd(),
-          workspacePath: '/tmp/test-workspace',
+          scratchpadPath: '/tmp/test-scratchpad',
           platform: 'macos',
           shell: '/bin/zsh',
           timezone: 'UTC',

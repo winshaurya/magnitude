@@ -23,6 +23,16 @@ function resolveChainId(triggers: readonly TurnTrigger[]): string | null {
   return null
 }
 
+/**
+ * A trigger is "due" if it can fire right now. chain_continue triggers may
+ * carry a notBefore timestamp (for retry backoff) — those are pending until
+ * the wall clock catches up. All other triggers are always due.
+ */
+function isTriggerDue(trigger: TurnTrigger, now: number): boolean {
+  if (trigger._tag !== 'chain_continue') return true
+  return trigger.notBefore === undefined || trigger.notBefore <= now
+}
+
 function startTurnForFork(
   forkId: string | null,
   turnFork: ForkTurnState,
@@ -48,18 +58,17 @@ export const TurnController = Worker.define<AppEvent>()({
     Effect.gen(function* () {
       const turnForks = yield* read.allForks(TurnProjection)
       const compactionForks = yield* read.allForks(CompactionProjection)
+      const now = Date.now()
 
       for (const [forkId, turnFork] of turnForks) {
         const compactionFork: import('../projections/compaction').CompactionState | undefined = compactionForks.get(forkId)
-        const hasTrigger = turnFork.triggers.length > 0
+        const hasDueTrigger = turnFork.triggers.some((t) => isTriggerDue(t, now))
         const isTurnIdle = turnFork._tag === 'idle'
-        const isCompactionIdle = compactionFork === undefined || compactionFork._tag === 'idle'
         const contextLimitBlocked = compactionFork?.contextLimitBlocked === true
 
         const canStart =
-          hasTrigger &&
+          hasDueTrigger &&
           isTurnIdle &&
-          isCompactionIdle &&
           !contextLimitBlocked
 
         if (canStart) {

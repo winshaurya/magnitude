@@ -30,14 +30,14 @@ export interface AgentRoleDefinition extends RoleDefinition {
 const LEAD_TOOLS: readonly ToolKey[] = [
   'fileRead', 'fileWrite', 'fileEdit', 'fileTree', 'fileSearch', 'fileView',
   'shell', 'webFetch', 'webSearch',
-  'createTask', 'updateTask', 'spawnWorker', 'killWorker',
-  'skill', 'messageWorker', 'yield',
+  'createTask', 'updateTask', 'spawnWorker', 'killWorker', 'reassignWorker',
+  'skill', 'messageWorker',
 ] as const
 
 const WORKER_TOOLS: readonly ToolKey[] = [
   'fileRead', 'fileWrite', 'fileEdit', 'fileTree', 'fileSearch', 'fileView',
   'shell', 'webFetch', 'webSearch',
-  'skill', 'yield',
+  'skill',
 ] as const
 
 const ROLE_TOOL_KEYS: Record<RoleId, readonly ToolKey[]> = {

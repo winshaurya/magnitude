@@ -84,6 +84,7 @@ const DEFAULT_TURN_STATE: ForkTurnState = {
   softInterrupted: false,
   parentForkId: null,
   completedTurns: 0,
+  connectionRetryCount: 0,
 }
 
 const DEFAULT_SESSION_TITLE = 'New Chat'

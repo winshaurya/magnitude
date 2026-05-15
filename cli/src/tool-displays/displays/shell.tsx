@@ -94,9 +94,9 @@ export const shellDisplay = createToolDisplay<ShellState>({
   },
   summary: (state) => {
     const command = state.command.trim();
-    if (state.phase === 'streaming' || state.phase === 'executing') return command ? `$ ${command}` : 'Running shell command';
+    if (state.phase === 'streaming' || state.phase === 'executing') return command ? `$ ${command}` : 'Run shell command';
     if (state.phase === 'error') return command ? `Shell error: $ ${command}` : 'Shell error';
     if (state.phase === 'rejected') return command ? `Rejected: $ ${command}` : 'Shell command rejected';
-    return command ? `$ ${command}` : 'Ran shell command';
+    return command ? `$ ${command}` : 'Run shell command';
   },
 });

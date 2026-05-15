@@ -1,0 +1,50 @@
+---
+title: Pricing
+description: "Pass-through API pricing, no markup"
+icon: badge-dollar-sign
+---
+
+Magnitude is pay-as-you-go. We pass through the underlying API cost of each model with no markup. You pay what we pay.
+
+Sign up at [app.magnitude.dev](https://app.magnitude.dev) and you get **\$5 of free credits** to start, no card required.
+
+<Tip>Want to chat about your use case for open models? [Book a call with our founder →](https://calendly.com/tom-magnitude/30min)</Tip>
+
+## How it works
+
+- **Free to start.** \$5 of credits on signup. Never expires.
+- **Pass-through pricing.** Each request is charged at the model's actual per-token cost. No markup, no subscription, no rate-limit windows.
+- **Top-ups.** Add credits in multiples of \$5 (presets at \$10, \$20, \$50, custom up to \$500). Stripe processing fees are passed through as a separate line item.
+- **Auto-reload (optional).** Off by default. Turn it on and set a threshold, top-up amount, and monthly cap. When your balance drops below the threshold, we charge your card for the configured amount.
+
+Manage all of this on the [billing page](https://app.magnitude.dev/billing) in the console.
+
+## Per-token pricing
+
+Pricing per 1M tokens, identical to what the underlying provider charges us.
+
+| Model | Input | Cached input | Output |
+|---|---|---|---|
+| Kimi K2.6 | \$0.95 | \$0.16 | \$4.00 |
+| MiniMax M2.7 | \$0.30 | \$0.06 | \$1.20 |
+| DeepSeek V4 Pro | \$1.74 | \$0.15 | \$3.48 |
+| GLM 5.1 | \$1.40 | \$0.26 | \$4.40 |
+
+Roughly 90% of input tokens are served from cache after the first turn of a conversation, so real-world cost is closer to the cached input column than the input column.
+
+## Models in the lineup
+
+The current lineup of models powering the agent team:
+
+- Kimi K2.6
+- DeepSeek V4 Pro
+- GLM 5.1
+- MiniMax M2.7
+
+Each model is assigned to the agent it performs best for. See [Agent Team](/agent-team) for the full mapping.
+
+We test these constantly. New models drop, the lineup updates.
+
+## Checking your balance
+
+Run `/usage` in the CLI to see your current balance, recent spend, top-up history, and auto-reload status.

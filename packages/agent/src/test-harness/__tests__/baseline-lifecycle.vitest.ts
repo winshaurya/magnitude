@@ -38,7 +38,7 @@ describe('baseline harness lifecycle', () => {
     Effect.gen(function* () {
       const harness = yield* TestHarness
       yield* harness.script.next({ xml: '<magnitude:invoke tool="shell">\n<magnitude:parameter name="command">echo chain</magnitude:parameter>\n</magnitude:invoke>' })
-      yield* harness.script.next({ xml: '<magnitude:yield_user/>' })
+      yield* harness.script.next({ xml: '<magnitude:message to="user">done</magnitude:message>' })
 
       yield* harness.user('run chain')
 
@@ -109,7 +109,7 @@ describe('baseline harness lifecycle', () => {
               rootTurns += 1
               if (rootTurns === 1) {
                 return {
-                  ...response().createAgent('baseline-sub', 'explorer', 'baseline', 'do work').yield(),
+                  ...response().createAgent('baseline-sub', 'baseline-sub', 'baseline', 'engineer', 'do work').yield(),
                 }
               }
               return { xml: '<magnitude:yield_user/>' }
@@ -153,7 +153,7 @@ describe('baseline harness lifecycle', () => {
               rootTurns += 1
               if (rootTurns === 1) {
                 return {
-                  ...response().createAgent('baseline-sub-silent', 'explorer', 'baseline', 'do work').yield(),
+                  ...response().createAgent('baseline-sub-silent', 'baseline-sub-silent', 'baseline', 'engineer', 'do work').yield(),
                 }
               }
               return { xml: '<magnitude:yield_user/>' }

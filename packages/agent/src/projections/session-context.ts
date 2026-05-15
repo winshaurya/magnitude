@@ -31,14 +31,9 @@ export const SessionContextProjection = Projection.define<AppEvent, SessionConte
       context: event.context
     }),
 
-    compaction_completed: ({ event, state }) => {
-      // Update session context if refreshed during compaction
-      if (event.refreshedContext) {
-        return {
-          ...state,
-          context: event.refreshedContext
-        }
-      }
+    compaction_injected: ({ state }) => {
+      // Minimal event — refreshedContext flows via CompactionProjection's compactionInjected signal.
+      // WindowProjection handles session_context replacement in its signal handler.
       return state
     }
   }

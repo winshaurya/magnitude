@@ -336,6 +336,16 @@ export const AgentStatusProjection = Projection.define<AppEvent, AgentStatusStat
 
       return removed.state
     },
+
+    agent_task_changed: ({ event, state }) => {
+      const agent = state.agents.get(event.agentId)
+      if (!agent) return state
+
+      return {
+        ...state,
+        agents: new Map(state.agents).set(event.agentId, { ...agent, taskId: event.newTaskId }),
+      }
+    },
   },
 
 }))

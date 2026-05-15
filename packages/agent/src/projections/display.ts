@@ -16,10 +16,8 @@ import type {
   AppEvent,
   ToolDisplay,
   TurnOutcome,
-  ProviderNotReadyDetail,
-  ConnectionFailureDetail,
-  SafetyStopReason,
 } from '../events'
+import { present, type ErrorCta } from '../errors'
 
 import { AgentRoutingProjection } from './agent-routing'
 import { AgentStatusProjection, getAgentByForkId } from './agent-status'
@@ -35,7 +33,7 @@ import { createId } from '../util/id'
 import { finalizeOpenToolStepsAsInterruptedInSteps } from './display-interrupt'
 import { type ToolKey, HIDDEN_TOOLS } from '../tools/toolkits'
 import type { ToolState } from '../models/index'
-import { ToolStateProjection } from './tool-state'
+import { HarnessStateProjection, getToolHandlesRecord } from './harness-state'
 
 // =============================================================================
 // Types
@@ -172,10 +170,7 @@ export interface ErrorDisplayMessage {
   readonly type: 'error'
   readonly message: string
   readonly timestamp: number
-  readonly cta?: {
-    readonly label: string
-    readonly url: string
-  }
+  readonly cta?: ErrorCta
 }
 
 export interface ForkResultMessage {
@@ -197,10 +192,6 @@ export interface ForkActivityToolCounts {
   readonly webFetches: number
   readonly artifactWrites: number
   readonly artifactUpdates: number
-  readonly clicks: number
-  readonly navigations: number
-  readonly inputs: number
-  readonly evaluations: number
   readonly other: number
 }
 
@@ -402,95 +393,15 @@ function closeThinkBlock(state: DisplayState, timestamp: number): DisplayState {
   }
 }
 
-function describeProviderNotReady(detail: ProviderNotReadyDetail): { message: string; cta?: { readonly label: string; readonly url: string } } {
-  switch (detail._tag) {
-    case 'NotConfigured':
-      return { message: 'No model configured. Run /model to select one.' }
-    case 'ProviderDisconnected':
-      return { message: `${detail.providerName} is not connected. Run /provider to reconnect.` }
-    case 'AuthFailed':
-      return { message: `Authentication failed for ${detail.providerName}. Run /provider to update your API key.` }
-    case 'MagnitudeBilling':
-      switch (detail.reason._tag) {
-        case 'SubscriptionRequired':
-        case 'TrialExpired':
-          return {
-            message: detail.reason.message,
-            cta: {
-              label: 'Upgrade to Pro',
-              url: 'https://app.magnitude.dev'
-            }
-          }
-        case 'UsageLimitExceeded':
-          return {
-            message: detail.reason.message,
-            cta: {
-              label: 'Manage your subscription',
-              url: 'https://app.magnitude.dev'
-            }
-          }
-      }
-  }
-}
-
-function describeConnectionFailure(detail: ConnectionFailureDetail): string {
-  switch (detail._tag) {
-    case 'ProviderError':
-      return `Connection issue with provider (HTTP ${detail.httpStatus}); retrying`
-    case 'TransportError':
-      return detail.httpStatus !== undefined
-        ? `Transport connection issue (HTTP ${detail.httpStatus}); retrying`
-        : 'Transport connection issue; retrying'
-    case 'StreamError':
-      return 'Connection issue while reading response; retrying'
-  }
-}
-
-function describeSafetyStop(reason: SafetyStopReason): string {
-  switch (reason._tag) {
-    case 'IdenticalResponseCircuitBreaker':
-      return `Stopped after ${reason.threshold} identical responses`
-    case 'Other':
-      return reason.message
-  }
-}
-
-function toErrorDisplayMessage(
-  outcome: Extract<TurnOutcome, { _tag: 'SafetyStop' } | { _tag: 'UnexpectedError' } | { _tag: 'ProviderNotReady' } | { _tag: 'OutputTruncated' }>,
-  timestamp: number
-): ErrorDisplayMessage {
-  switch (outcome._tag) {
-    case 'SafetyStop':
-      return {
-        id: generateId(),
-        type: 'error',
-        message: describeSafetyStop(outcome.reason),
-        timestamp,
-      }
-    case 'UnexpectedError':
-      return {
-        id: generateId(),
-        type: 'error',
-        message: outcome.message,
-        timestamp,
-      }
-    case 'ProviderNotReady': {
-      const { message, cta } = describeProviderNotReady(outcome.detail)
-      return {
-        id: generateId(),
-        type: 'error',
-        message,
-        timestamp,
-        cta,
-      }
-    }
-    case 'OutputTruncated':
-      return {
-        id: generateId(),
-        type: 'error',
-        message: 'Response exceeded output limit',
-        timestamp,
-      }
+function toErrorDisplayMessage(outcome: TurnOutcome, timestamp: number): ErrorDisplayMessage | null {
+  const p = present(outcome)
+  if (p.surface !== 'inline') return null
+  return {
+    id: generateId(),
+    type: 'error',
+    message: p.message,
+    timestamp,
+    cta: p.cta,
   }
 }
 
@@ -535,10 +446,6 @@ const EMPTY_TOOL_COUNTS: ForkActivityToolCounts = {
   webFetches: 0,
   artifactWrites: 0,
   artifactUpdates: 0,
-  clicks: 0,
-  navigations: 0,
-  inputs: 0,
-  evaluations: 0,
   other: 0
 }
 
@@ -551,19 +458,7 @@ function incrementToolCount(counts: ForkActivityToolCounts, toolKey: ToolKey): F
     case 'fileEdit': return { ...counts, edits: counts.edits + 1 }
     case 'fileSearch': return { ...counts, searches: counts.searches + 1 }
     case 'webFetch': return { ...counts, webFetches: counts.webFetches + 1 }
-    case 'click':
-    case 'doubleClick':
-    case 'rightClick':
-    case 'drag': return { ...counts, clicks: counts.clicks + 1 }
-    case 'navigate':
-    case 'goBack':
-    case 'switchTab':
-    case 'newTab': return { ...counts, navigations: counts.navigations + 1 }
-    case 'type': return { ...counts, inputs: counts.inputs + 1 }
-    case 'evaluate': return { ...counts, evaluations: counts.evaluations + 1 }
     case 'fileView':
-    case 'scroll':
-    case 'screenshot':
       return { ...counts, other: counts.other + 1 }
     default:
       return { ...counts, other: counts.other + 1 }
@@ -587,10 +482,6 @@ function totalToolsUsed(counts: ForkActivityToolCounts): number {
     + counts.webFetches
     + counts.artifactWrites
     + counts.artifactUpdates
-    + counts.clicks
-    + counts.navigations
-    + counts.inputs
-    + counts.evaluations
     + counts.other
 }
 
@@ -666,7 +557,7 @@ export const DisplayProjection = Projection.defineForked<AppEvent, DisplayState>
 
   ambients: [],
 
-  reads: [AgentRoutingProjection, AgentStatusProjection, UserMessageResolutionProjection, TurnProjection, ToolStateProjection] as const,
+  reads: [AgentRoutingProjection, AgentStatusProjection, UserMessageResolutionProjection, TurnProjection, HarnessStateProjection] as const,
 
   initialFork: {
     status: 'idle',
@@ -858,7 +749,8 @@ export const DisplayProjection = Projection.defineForked<AppEvent, DisplayState>
 
     tool_event: ({ event, fork, read, emit }) => {
       const inner = event.event
-      const toolStateFork = read(ToolStateProjection) ?? { toolHandles: {} }
+      const harnessState = read(HarnessStateProjection)
+      const toolStateFork = { toolHandles: harnessState ? getToolHandlesRecord(harnessState) : {} }
       switch (inner._tag) {
         case 'ToolInputStarted': {
           // Emit signal for parent fork activity tracking (before any early returns)
@@ -1044,11 +936,28 @@ export const DisplayProjection = Projection.defineForked<AppEvent, DisplayState>
 
       return {
         ...closedState,
-        messages: [...closedState.messages, errorMessage],
+        messages: errorMessage ? [...closedState.messages, errorMessage] : closedState.messages,
         currentTurnId: null,
         status: 'idle' as const,
         streamingMessageId: null,
         showButton: 'send' as const
+      }
+    },
+
+    compaction_failed: ({ event, fork }) => {
+      if (!event.presentation || event.presentation.surface !== 'inline') return fork
+
+      const errorMsg: ErrorDisplayMessage = {
+        id: generateId(),
+        type: 'error',
+        message: event.presentation.message,
+        timestamp: event.timestamp,
+        cta: event.presentation.cta,
+      }
+
+      return {
+        ...fork,
+        messages: [...fork.messages, errorMsg],
       }
     },
 
@@ -1067,7 +976,8 @@ export const DisplayProjection = Projection.defineForked<AppEvent, DisplayState>
       }
 
       // Finalize any still-open tool steps as interrupted before closing think block
-      const toolStateFork = read(ToolStateProjection) ?? { toolHandles: {} }
+      const harnessState = read(HarnessStateProjection)
+      const toolStateFork = { toolHandles: harnessState ? getToolHandlesRecord(harnessState) : {} }
       const interruptedState = finalizeOpenToolStepsAsInterrupted(fork, toolStateFork)
 
       // Close think block and remove queued messages

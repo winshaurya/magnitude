@@ -1,7 +1,7 @@
 /**
  * Result Persistence — persist tool results to files for retroactive disclosure.
  *
- * File path convention: {resultsDir}/{turnId}-{callId}.json
+ * File path convention: {resultsDir}/{turnId}_{callId}.json
  * (flat directory, no subdirectories)
  */
 
@@ -24,7 +24,7 @@ export class PersistError extends Data.TaggedError('PersistError')<{
 // ---------------------------------------------------------------------------
 
 function resultPath(resultsDir: string, turnId: string, callId: string): string {
-  return join(resultsDir, `${turnId}-${callId}.json`)
+  return join(resultsDir, `${turnId}_${callId}.json`)
 }
 
 function ensureDir(dir: string): Effect.Effect<void, PersistError> {
@@ -39,7 +39,7 @@ function ensureDir(dir: string): Effect.Effect<void, PersistError> {
 // ---------------------------------------------------------------------------
 
 /**
- * Persist a tool result as JSON to {resultsDir}/{turnId}-{callId}.json.
+ * Persist a tool result as JSON to {resultsDir}/{turnId}_{callId}.json.
  */
 export const persistResult = (
   output: unknown,

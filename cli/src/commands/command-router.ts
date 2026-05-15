@@ -19,8 +19,6 @@ export interface CommandContext {
   initProject: () => void
   /** Handle /settings command. Opens settings overlay. */
   openSettings: () => void
-  /** Open the browser setup overlay */
-  openBrowserSetup: () => void
   /** Open the usage overlay */
   openUsage: () => void
 }
@@ -138,10 +136,6 @@ export function routeSlashCommand(input: string, ctx: CommandContext): boolean {
 
     case 'usage':
       ctx.openUsage()
-      return true
-
-    case 'browser-setup':
-      ctx.openBrowserSetup()
       return true
 
     default:

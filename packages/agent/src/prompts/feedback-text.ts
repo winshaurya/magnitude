@@ -1,4 +1,4 @@
-import type { TurnFeedback } from '../inbox/types'
+import type { TurnFeedback } from '../window/types'
 
 /**
  * Render TurnFeedback items to plain text.

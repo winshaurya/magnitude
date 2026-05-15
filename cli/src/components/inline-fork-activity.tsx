@@ -26,8 +26,7 @@ function formatDuration(seconds: number): string {
 function getTotalToolCount(counts: ForkActivityToolCounts): number {
   return counts.reads + counts.writes + counts.edits + counts.commands
     + counts.webSearches + counts.webFetches
-    + counts.searches + counts.clicks + counts.navigations + counts.inputs
-    + counts.evaluations + counts.other
+    + counts.searches + counts.other
 }
 
 function capitalize(s: string): string {

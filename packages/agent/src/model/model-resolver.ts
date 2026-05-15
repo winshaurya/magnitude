@@ -1,8 +1,7 @@
 import { Context, Effect, Layer } from 'effect'
 import type { BoundModel } from '@magnitudedev/ai'
-import type { MagnitudeCallOptions, MagnitudeConnectionError, MagnitudeStreamError, ModelProfile } from '@magnitudedev/magnitude-client'
+import type { MagnitudeCallOptions, MagnitudeConnectionError, MagnitudeStreamError, ModelProfile, MagnitudeAdditionalOptions } from '@magnitudedev/magnitude-client'
 import { MagnitudeClient } from '@magnitudedev/magnitude-client'
-import type { ModelOverrides } from '@magnitudedev/roles'
 import { AmbientServiceTag, type AmbientService } from '@magnitudedev/event-core'
 import type { RoleId } from '../agents/role-validation'
 import { ConfigAmbient, getRoleConfig } from '../ambient/config-ambient'
@@ -14,6 +13,10 @@ export interface AgentBoundModel {
   readonly profile: ModelProfile
 }
 
+const LEADER_TRAITS: MagnitudeAdditionalOptions = {
+  traits: ['ATTENTIVE', 'STRATEGIC', 'PROACTIVE', 'RESPECTFUL', 'GROUNDED', 'INTROSPECTIVE', 'TASK'],
+}
+
 export interface AgentModelResolverService {
   readonly resolve: (roleId: RoleId) => Effect.Effect<AgentBoundModel, never, AmbientService>
 }
@@ -23,7 +26,7 @@ export class AgentModelResolver extends Context.Tag('AgentModelResolver')<
   AgentModelResolverService
 >() {}
 
-export const AgentModelResolverLive = (overrides?: ModelOverrides) =>
+export const AgentModelResolverLive = () =>
   Layer.effect(
     AgentModelResolver,
     Effect.gen(function* () {
@@ -35,17 +38,16 @@ export const AgentModelResolverLive = (overrides?: ModelOverrides) =>
             const ambientService = yield* AmbientServiceTag
             const configState = ambientService.getValue(ConfigAmbient)
             const roleConfig = getRoleConfig(configState, roleId)
-            const defaults = { maxTokens: roleConfig.profile.maxOutputTokens }
-
-            const override = overrides?.[roleId]
-            const model = override
-              ? override.spec.bind({ auth: override.auth ?? client.auth, defaults })
-              : client.role(roleId, defaults)
+            const defaults = {
+              maxTokens: roleConfig.profile.maxOutputTokens,
+              magnitudeAdditionalOptions: roleId === 'leader' ? LEADER_TRAITS : undefined,
+            }
+            const capabilities = { vision: roleConfig.profile.capabilities.vision }
 
             return {
-              model,
+              model: client.role(roleId, { defaults, capabilities }),
               roleId,
-              modelId: override?.spec.modelId ?? `role/${roleId}`,
+              modelId: `role/${roleId}`,
               profile: roleConfig.profile,
             }
           }),

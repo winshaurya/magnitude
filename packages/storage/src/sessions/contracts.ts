@@ -11,7 +11,7 @@ export interface SessionStorageShape {
     readonly sessionMetaFile: (sessionId: string) => string
     readonly sessionEventsFile: (sessionId: string) => string
     readonly sessionLogFile: (sessionId: string) => string
-    readonly sessionWorkspace: (sessionId: string) => string
+    readonly sessionScratchpad: (sessionId: string) => string
     readonly pendingMemoryJobFile: (jobId: string) => string
   }
 
@@ -61,9 +61,8 @@ export interface SessionStorageShape {
     sessionId: string
   ) => Effect.Effect<void>
 
-  readonly createSessionWorkspace: (
+  readonly createSessionScratchpad: (
     sessionId: string,
-    cwd: string
   ) => Effect.Effect<string>
 
   readonly createMemoryExtractionJobRecord: (params: {

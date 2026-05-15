@@ -27,7 +27,7 @@ describe('getOwnVisualStatus', () => {
   })
 
   test('returns pending for working tasks', () => {
-    expect(getOwnVisualStatus(makeTask({ status: 'working' }))).toBe('pending')
+    expect(getOwnVisualStatus(makeTask({ status: 'pending' }))).toBe('pending')
   })
 
   test('returns pending for task with worker slot', () => {
@@ -59,7 +59,7 @@ describe('getOwnVisualStatus', () => {
 
 describe('computeInheritedVisualStatusMap', () => {
   test('single task with no children keeps own status', () => {
-    const tasks = [makeTask({ taskId: 'root', status: 'working' })]
+    const tasks = [makeTask({ taskId: 'root', status: 'pending' })]
     const result = computeInheritedVisualStatusMap(tasks)
     expect(result.get('root')).toBe('pending')
   })
@@ -67,7 +67,7 @@ describe('computeInheritedVisualStatusMap', () => {
   test('parent with working child remains pending', () => {
     const tasks = [
       makeTask({ taskId: 'parent', status: 'pending' }),
-      makeTask({ taskId: 'child', depth: 1, parentId: 'parent', status: 'working' }),
+      makeTask({ taskId: 'child', depth: 1, parentId: 'parent', status: 'pending' }),
     ]
     const result = computeInheritedVisualStatusMap(tasks)
     expect(result.get('parent')).toBe('pending')
@@ -120,7 +120,7 @@ describe('computeInheritedVisualStatusMap', () => {
           ghostEligible: true,
         },
       }),
-      makeTask({ taskId: 'working-child', depth: 1, parentId: 'parent', status: 'working' }),
+      makeTask({ taskId: 'working-child', depth: 1, parentId: 'parent', status: 'pending' }),
     ]
     const result = computeInheritedVisualStatusMap(tasks)
     expect(result.get('parent')).toBe('pending')
@@ -129,7 +129,7 @@ describe('computeInheritedVisualStatusMap', () => {
   test('completed parent with working child stays completed', () => {
     const tasks = [
       makeTask({ taskId: 'parent', status: 'completed' }),
-      makeTask({ taskId: 'child', depth: 1, parentId: 'parent', status: 'working' }),
+      makeTask({ taskId: 'child', depth: 1, parentId: 'parent', status: 'pending' }),
     ]
     const result = computeInheritedVisualStatusMap(tasks)
     expect(result.get('parent')).toBe('completed')
@@ -145,7 +145,7 @@ describe('computeInheritedVisualStatusMap', () => {
   })
 
   test('child with missing parent keeps own status and does not throw', () => {
-    const tasks = [makeTask({ taskId: 'orphan', parentId: 'missing', depth: 1, status: 'working' })]
+    const tasks = [makeTask({ taskId: 'orphan', parentId: 'missing', depth: 1, status: 'pending' })]
     const result = computeInheritedVisualStatusMap(tasks)
     expect(result.get('orphan')).toBe('pending')
   })
@@ -154,7 +154,7 @@ describe('computeInheritedVisualStatusMap', () => {
     const tasks = [
       makeTask({ taskId: 'grandparent', status: 'pending' }),
       makeTask({ taskId: 'parent', depth: 1, parentId: 'grandparent', status: 'pending' }),
-      makeTask({ taskId: 'child', depth: 2, parentId: 'parent', status: 'working' }),
+      makeTask({ taskId: 'child', depth: 2, parentId: 'parent', status: 'pending' }),
     ]
     const result = computeInheritedVisualStatusMap(tasks)
     expect(result.get('parent')).toBe('pending')

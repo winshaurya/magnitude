@@ -61,7 +61,6 @@ const recordedEvents: HarnessEvent[] = [
   {
     _tag: "ToolInputReady",
     toolCallId: "tc_1" as ToolCallId,
-    input: { text: "hello" },
   },
   {
     _tag: "ToolExecutionStarted",
@@ -81,13 +80,6 @@ const recordedEvents: HarnessEvent[] = [
     result: { _tag: "Success", output: "hello" },
   },
   {
-    _tag: "ToolResultFormatted",
-    toolCallId: "tc_1" as ToolCallId,
-    toolName: "echo",
-    toolKey: "echo",
-    parts: [{ _tag: "TextPart", text: "hello" }],
-  },
-  {
     _tag: "TurnEnd",
     outcome: { _tag: "Completed", toolCallsCount: 1 },
     usage: null,
@@ -101,7 +93,8 @@ const program = Effect.gen(function* () {
     yield* replay.feed(event)
   }
 
-  const canonical = yield* Ref.get(replay.canonicalTurn)
+  const state = yield* Ref.get(replay.state)
+  const canonical = state.canonical
   console.log("Reconstructed turn:")
   console.log(`  Message: ${canonical.assistantMessage.text}`)
   console.log(`  Tool calls: ${canonical.assistantMessage.toolCalls?.length ?? 0}`)

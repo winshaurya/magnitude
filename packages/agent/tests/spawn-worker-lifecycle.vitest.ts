@@ -9,12 +9,12 @@ describe('spawn-worker lifecycle integration', () => {
 
       // Turn 1 (root): create task
       yield* h.script.next({
-        xml: '<magnitude:invoke tool="create_task">\n<magnitude:parameter name="id">flow-task</magnitude:parameter>\n<magnitude:parameter name="title">Flow task</magnitude:parameter>\n</magnitude:invoke>\n<magnitude:yield_user/>',
+        xml: '<magnitude:invoke tool="create_task">\n<magnitude:parameter name="taskId">flow-task</magnitude:parameter>\n<magnitude:parameter name="title">Flow task</magnitude:parameter>\n</magnitude:invoke>\n<magnitude:yield_user/>',
       }, null)
 
       // Turn 2 (root): spawn worker with initial instructions
       yield* h.script.next({
-        xml: '<magnitude:invoke tool="spawn_worker">\n<magnitude:parameter name="id">flow-task</magnitude:parameter>\n<magnitude:parameter name="message">Write output.txt with content "hello"</magnitude:parameter>\n</magnitude:invoke>\n<magnitude:yield_user/>',
+        xml: '<magnitude:invoke tool="spawn_worker">\n<magnitude:parameter name="taskId">flow-task</magnitude:parameter>\n<magnitude:parameter name="role">engineer</magnitude:parameter>\n<magnitude:parameter name="agentId">flow-task</magnitude:parameter>\n<magnitude:parameter name="message">Write output.txt with content "hello"</magnitude:parameter>\n</magnitude:invoke>\n<magnitude:yield_user/>',
       }, null)
 
       // Turn 3 (worker): execute tool + respond to parent
@@ -39,6 +39,8 @@ describe('spawn-worker lifecycle integration', () => {
         'turn_outcome',
         (e) => e.forkId === null && e.turnId !== rootFirst.turnId,
       )
+      expect(rootSecond.outcome._tag).toBe('Completed')
+
       expect(rootSecond.outcome._tag).toBe('Completed')
 
       const created = yield* h.wait.event('agent_created', (e) => e.agentId === 'flow-task')

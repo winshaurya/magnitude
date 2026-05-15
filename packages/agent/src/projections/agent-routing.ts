@@ -6,7 +6,6 @@
 
 import { Projection, Signal } from '@magnitudedev/event-core'
 import { type AppEvent, outcomeWillChainContinue } from '../events'
-import { TaskGraphProjection } from './task-graph'
 
 export interface RoutingEntry {
   readonly agentId: string
@@ -80,17 +79,12 @@ export interface InvalidExplicitDestinationSignal {
   readonly forkId: string | null
   readonly turnId: string
   readonly messageId: string
-  readonly taskId: string | null
+  readonly agentId: string | null
   readonly to: string
   readonly reason: string
   readonly timestamp: number
 }
 
-function findTaskWorkerAgentId(taskGraph: { tasks: ReadonlyMap<string, { worker: { agentId: string } | null }> }, taskId: string | null): string | null {
-  if (!taskId) return null
-  const task = taskGraph.tasks.get(taskId)
-  return task?.worker?.agentId ?? null
-}
 
 function removeAgentRoutingState(
   state: AgentRoutingState,
@@ -127,7 +121,7 @@ function removeAgentRoutingState(
 
 export const AgentRoutingProjection = Projection.define<AppEvent, AgentRoutingState>()(({
   name: 'AgentRouting',
-  reads: [TaskGraphProjection] as const,
+  reads: [] as const,
 
   initial: {
     agents: new Map(),
@@ -174,13 +168,12 @@ export const AgentRoutingProjection = Projection.define<AppEvent, AgentRoutingSt
     },
 
 
-    message_start: ({ event, state, emit, read }) => {
+    message_start: ({ event, state, emit }) => {
       const destination = event.destination
-      const taskGraph = read(TaskGraphProjection)
       const source = event.forkId === null ? undefined : getRoutingEntryByForkId(state, event.forkId)
 
       const targetAgentId = destination.kind === 'worker'
-        ? findTaskWorkerAgentId(taskGraph, destination.taskId)
+        ? destination.agentId
         : null
 
       const pendingMessages = new Map(state.pendingMessages)
@@ -287,9 +280,8 @@ export const AgentRoutingProjection = Projection.define<AppEvent, AgentRoutingSt
 
       if (entry.destination.kind === 'worker') {
         // Re-resolve target at message_end to handle same-turn spawn_worker + message flows.
-        const taskGraph = read(TaskGraphProjection)
         const resolvedTargetAgentId =
-          entry.targetAgentId ?? findTaskWorkerAgentId(taskGraph, entry.destination.taskId)
+          entry.targetAgentId ?? entry.destination.agentId
 
         if (resolvedTargetAgentId && isActiveRoute(state, resolvedTargetAgentId)) {
           const target = getRoutingEntry(state, resolvedTargetAgentId)
@@ -314,9 +306,9 @@ export const AgentRoutingProjection = Projection.define<AppEvent, AgentRoutingSt
             forkId: entry.forkId,
             turnId: event.turnId,
             messageId: event.id,
-            taskId: entry.destination.taskId,
-            to: entry.destination.taskId,
-            reason: 'task has no active routed worker at message_end',
+            agentId: entry.destination.agentId,
+            to: entry.destination.agentId,
+            reason: 'no active routed worker at message_end',
             timestamp: event.timestamp,
           })
         }

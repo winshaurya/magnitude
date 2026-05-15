@@ -24,7 +24,7 @@ export const webSearchDisplay = createToolDisplay<WebSearchState>({
         <Button onClick={onToggle}>
           <text style={{ wrapMode: 'word' }}>
             <span style={{ fg: theme.info }}>[⌕] </span>
-            <span style={{ fg: theme.foreground }}>{'Searching web for '}</span>
+            <span style={{ fg: theme.foreground }}>{'Search web for '}</span>
             <span style={{ fg: theme.muted }}>{`"${state.query ? truncate(state.query, 50) : '...'}"`}</span>
             <ShimmerText text=" ..." interval={WEB_SEARCH_SHIMMER_MS} primaryColor={theme.info} />
           </text>
@@ -37,7 +37,7 @@ export const webSearchDisplay = createToolDisplay<WebSearchState>({
       return (
         <text style={{ wrapMode: 'word' }}>
           <span style={{ fg: theme.error }}>{'✗  '}</span>
-          <span style={{ fg: theme.foreground }}>{'Searched web for '}</span>
+          <span style={{ fg: theme.foreground }}>{'Search web for '}</span>
           <span style={{ fg: theme.muted }}>{`"${state.query ? truncate(state.query, 50) : ''}"`}</span>
           <span style={{ fg: theme.error }}>{' · Error'}</span>
           {errorMsg ? <span style={{ fg: theme.muted }}>{` (${truncate(errorMsg, 80)})`}</span> : null}
@@ -51,7 +51,7 @@ export const webSearchDisplay = createToolDisplay<WebSearchState>({
           <Button onClick={onToggle}>
             <text style={{ wrapMode: 'word' }}>
               <span style={{ fg: theme.info }}>[⌕] </span>
-              <span style={{ fg: theme.foreground }}>{'Searched web for '}</span>
+              <span style={{ fg: theme.foreground }}>{'Search web for '}</span>
               <span style={{ fg: theme.muted }}>{`"${truncate(state.query ?? '', 50)}"`}</span>
               <span style={{ fg: theme.info }}>{` · ${sources.length} ${sources.length === 1 ? 'source' : 'sources'}`}</span>
               <span style={{ fg: theme.secondary }} attributes={TextAttributes.DIM}>{isExpanded ? ' (collapse)' : ' (expand)'}</span>
@@ -74,7 +74,7 @@ export const webSearchDisplay = createToolDisplay<WebSearchState>({
     return (
       <text style={{ wrapMode: 'word' }}>
         <span style={{ fg: theme.info }}>[⌕] </span>
-        <span style={{ fg: theme.foreground }}>{'Searched web for '}</span>
+        <span style={{ fg: theme.foreground }}>{'Search web for '}</span>
         <span style={{ fg: theme.muted }}>{`"${truncate(state.query ?? '', 50)}"`}</span>
         <span style={{ fg: theme.muted }}>{' · No Sources Found'}</span>
       </text>
@@ -82,7 +82,6 @@ export const webSearchDisplay = createToolDisplay<WebSearchState>({
   },
   summary: (state) => {
     const target = state.query ? `"${state.query}"` : 'the web';
-    if (state.phase === 'streaming' || state.phase === 'executing') return `Searching web for ${target}`;
-    return `Searched web for ${target}`;
+    return `Search web for ${target}`;
   },
 });

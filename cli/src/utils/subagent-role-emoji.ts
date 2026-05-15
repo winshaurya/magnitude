@@ -4,7 +4,6 @@ const ROLE_EMOJI: Record<string, string> = {
   builder: '⚒',
   reviewer: '✔',
   debugger: '⛏',
-  browser: '⌨',
 }
 
 export function getSubagentRoleEmoji(role?: string): string | null {

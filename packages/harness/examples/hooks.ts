@@ -1,59 +1,34 @@
 /**
- * Example: Custom HarnessHooks for formatting overrides
+ * Example: Composable tool result formatting with ToolResultFormatter
  *
- * Shows how to define HarnessHooks with custom formatResult and
- * formatDecodeFailure to control how tool results appear in prompts.
+ * Shows how to create a custom ToolResultFormatter by composing
+ * over the default — override specific cases, delegate the rest.
  */
 
-import type { HarnessHooks } from '../src'
+import { createToolResultFormatter, type ToolResultFormatter } from '../src'
+import { defineToolkit } from '../src'
+import type { Toolkit } from '../src'
 
-// ── Custom hooks with formatting overrides ───────────────────────────
+// Build the default formatter from a toolkit
+const toolkit: Toolkit = defineToolkit({ /* ... */ })
+const defaultFormat = createToolResultFormatter(toolkit)
 
-const myHooks: HarnessHooks = {
-  // Override how tool execution results are formatted
-  formatResult: (toolName, toolKey, result) => {
-    if (result._tag === 'Success') {
-      // Custom: wrap all success output in a tool-specific tag
-      return [{
-        _tag: 'TextPart',
-        text: `<${toolName}_result>${JSON.stringify(result.output)}</${toolName}_result>`,
-      }]
-    }
+// Compose: override specific result types, delegate the rest
+const customFormat: ToolResultFormatter = (entry) => {
+  const result = entry.result
 
-    if (result._tag === 'Error') {
-      // Custom: include tool name in error
-      return [{
-        _tag: 'TextPart',
-        text: `<error tool="${toolName}">${result.error.message}</error>`,
-      }]
-    }
+  // Custom: wrap shell output in a tag
+  if (result._tag === 'Success' && entry.toolName === 'shell') {
+    return [{ _tag: 'TextPart' as const, text: `<shell_output>${JSON.stringify(result.output)}</shell_output>` }]
+  }
 
-    // Fall through for rejected/interrupted — return default-style
-    if (result._tag === 'Interrupted') {
-      return [{ _tag: 'TextPart', text: '<interrupted/>' }]
-    }
-
-    return [{ _tag: 'TextPart', text: `<rejected>${String(result.rejection)}</rejected>` }]
-  },
-
-  // Override how decode failures are formatted
-  formatDecodeFailure: (toolName, issue, inputSchema, receivedInput) => {
-    // Minimal format — just the problem
-    return [{
-      _tag: 'TextPart',
-      text: [
-        `<parse_error>`,
-        `Tool "${toolName}" received invalid input.`,
-        issue.path.length > 0 ? `Field: ${issue.path.join('.')}` : null,
-        `Issue: ${issue.message}`,
-        `</parse_error>`,
-      ].filter(Boolean).join('\n'),
-    }]
-  },
+  // Delegate everything else to the default
+  return defaultFormat(entry)
 }
 
 // ── Hooks with Effect-based interceptors ─────────────────────────────
 
+import type { HarnessHooks } from '../src'
 import { Effect } from 'effect'
 
 const hooksWithInterceptors: HarnessHooks = {

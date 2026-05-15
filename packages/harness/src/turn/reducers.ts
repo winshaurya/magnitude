@@ -2,9 +2,8 @@ import type {
   AssistantMessage,
   ToolCallPart,
   ToolCallId,
-  ToolResultMessage,
+  ProviderToolCallId,
   ResponseUsage,
-  ToolResultPart,
   JsonValue,
 } from "@magnitudedev/ai"
 import type {
@@ -25,11 +24,13 @@ export interface Reducer<TState> {
   readonly step: (state: TState, event: HarnessEvent) => TState
 }
 
+import type { ToolResultEntry } from '../events'
+
 // ── CanonicalTurnState (public) ──────────────────────────────────────
 
 export interface CanonicalTurnState {
   readonly assistantMessage: AssistantMessage
-  readonly toolResults: readonly ToolResultMessage[]
+  readonly toolResults: readonly ToolResultEntry[]
   readonly outcome: TurnOutcome | null
   readonly usage: ResponseUsage | null
 }
@@ -44,12 +45,12 @@ export interface CanonicalTurnState {
 export interface CanonicalAccumulator {
   readonly reasoning: string
   readonly messageText: string
-  readonly toolCallMeta: ReadonlyMap<string, { readonly toolName: string; readonly toolKey: string }>
+  readonly toolCallMeta: ReadonlyMap<string, { readonly providerToolCallId: ProviderToolCallId; readonly toolName: string; readonly toolKey: string }>
   readonly toolCallInputs: ReadonlyMap<string, JsonValue>
   readonly toolCallInputChunks: ReadonlyMap<string, StreamingPartial<unknown>>
   readonly readyToolCalls: ReadonlySet<string>
   readonly assistantMessage: AssistantMessage
-  readonly toolResults: readonly ToolResultMessage[]
+  readonly toolResults: readonly ToolResultEntry[]
   readonly outcome: TurnOutcome | null
   readonly usage: ResponseUsage | null
 }
@@ -135,12 +136,13 @@ function canonicalAccumulatorStep(state: CanonicalAccumulator, event: HarnessEve
         {
           _tag: "ToolCallPart" as const,
           id,
+          providerToolCallId: event.providerToolCallId,
           name: event.toolName,
           input: emptyInput,
         },
       ]
       const meta = new Map(state.toolCallMeta)
-      meta.set(event.toolCallId, { toolName: event.toolName, toolKey: event.toolKey })
+      meta.set(event.toolCallId, { providerToolCallId: event.providerToolCallId, toolName: event.toolName, toolKey: event.toolKey })
       return {
         ...state,
         toolCallMeta: meta,
@@ -180,37 +182,77 @@ function canonicalAccumulatorStep(state: CanonicalAccumulator, event: HarnessEve
       }
     }
 
-    case "ToolResultFormatted": {
-      const id = event.toolCallId
-      const resultMsg: ToolResultMessage = {
-        _tag: "ToolResultMessage",
-        toolCallId: id,
+    case "ToolExecutionEnded": {
+      const result: ToolResultEntry = {
+        toolCallId: event.toolCallId,
+        providerToolCallId: event.providerToolCallId,
         toolName: event.toolName,
-        parts: event.parts,
+        result: event.result,
       }
       return {
         ...state,
-        toolResults: [...state.toolResults, resultMsg],
+        toolResults: [...state.toolResults, result],
+      }
+    }
+
+    case "ToolInputRejected": {
+      const chunks = state.toolCallInputChunks.get(event.toolCallId)
+      const partialInput: JsonValue = chunks && Object.keys(chunks).length > 0
+        ? extractPartialAsJson(chunks)
+        : {}
+      const result: ToolResultEntry = {
+        toolCallId: event.toolCallId,
+        providerToolCallId: event.providerToolCallId,
+        toolName: event.toolName,
+        result: {
+          _tag: "InputRejected",
+          issue: event.issue,
+          partialInput,
+        },
+      }
+      return {
+        ...state,
+        toolResults: [...state.toolResults, result],
       }
     }
 
     case "TurnEnd": {
       let assistantMessage = state.assistantMessage
-      // On interrupt, assemble partial inputs for tool calls that never got ToolInputReady
-      if (event.outcome._tag === "Interrupted") {
+
+      // Assemble partial inputs for any tool calls that never got ToolInputReady,
+      // regardless of why the turn ended. This ensures the LLM sees what it actually
+      // sent (e.g. a path that failed validation) instead of an empty {} placeholder.
+      {
         const toolCalls: readonly ToolCallPart[] = (assistantMessage.toolCalls ?? []).map((tc): ToolCallPart => {
           if (state.readyToolCalls.has(tc.id)) return tc
           const chunks = state.toolCallInputChunks.get(tc.id)
           if (chunks && Object.keys(chunks).length > 0) {
-            return { _tag: "ToolCallPart", id: tc.id, name: tc.name, input: extractPartialAsJson(chunks) }
+            return { _tag: "ToolCallPart", id: tc.id, providerToolCallId: tc.providerToolCallId, name: tc.name, input: extractPartialAsJson(chunks) }
           }
           return tc
         })
         assistantMessage = { ...assistantMessage, toolCalls }
       }
+
+      // Add synthetic results for tool calls that never got a result event.
+      // This ensures every ToolCallPart has a matching ToolResultEntry,
+      // satisfying the OpenAI API constraint that every tool call must have a result.
+      const toolResults = [...state.toolResults]
+      for (const tc of (assistantMessage.toolCalls ?? [])) {
+        if (!toolResults.some(r => r.toolCallId === tc.id)) {
+          toolResults.push({
+              toolCallId: tc.id,
+            providerToolCallId: tc.providerToolCallId,
+            toolName: tc.name,
+            result: { _tag: "Interrupted" },
+          })
+        }
+      }
+
       return {
         ...state,
         assistantMessage,
+        toolResults,
         outcome: event.outcome,
         usage: event.usage,
       }
@@ -239,7 +281,7 @@ export const CanonicalAccumulatorReducer: Reducer<CanonicalAccumulator> = {
 
 export type ToolOutcome =
   | { readonly _tag: "Completed"; readonly result: ToolResult }
-  | { readonly _tag: "DecodeFailure" }
+  | { readonly _tag: "InputRejected" }
 
 // ── EngineState ──────────────────────────────────────────────────────
 
@@ -271,12 +313,18 @@ function engineStateStep(state: EngineState, event: HarnessEvent): EngineState {
       return { ...state, toolOutcomes }
     }
 
+    case "ToolInputRejected": {
+      const deadToolCalls = new Set(state.deadToolCalls)
+      deadToolCalls.add(event.toolCallId)
+      return { ...state, deadToolCalls }
+    }
+
     case "TurnEnd": {
       let newState = state
-      // Handle ToolInputDecodeFailure via TurnEnd outcome
-      if (event.outcome._tag === "ToolInputDecodeFailure") {
+      // Both decode and validation failures are input rejections
+      if (event.outcome._tag === "ToolInputDecodeFailure" || event.outcome._tag === "ToolInputValidationFailure") {
         const toolOutcomes = new Map(state.toolOutcomes)
-        toolOutcomes.set(event.outcome.toolCallId, { _tag: "DecodeFailure" })
+        toolOutcomes.set(event.outcome.toolCallId, { _tag: "InputRejected" })
         const deadToolCalls = new Set(state.deadToolCalls)
         deadToolCalls.add(event.outcome.toolCallId)
         newState = { ...state, toolOutcomes, deadToolCalls }
@@ -294,14 +342,39 @@ export const EngineStateReducer: Reducer<EngineState> = {
   step: engineStateStep,
 }
 
-// ── ToolHandleState ──────────────────────────────────────────────────
+// ── TurnState (unified) ──────────────────────────────────────────────
+
+export interface TurnState {
+  /** @internal — reducer bookkeeping, do not read */
+  readonly _accumulator: CanonicalAccumulator
+  readonly canonical: CanonicalTurnState
+  readonly engine: EngineState
+  readonly handles: ToolHandleState
+}
+
+export function createTurnReducer(toolkit: Toolkit): Reducer<TurnState> {
+  const toolHandleReducer = createToolHandleReducer(toolkit)
+
+  const initial: TurnState = {
+    _accumulator: CanonicalAccumulatorReducer.initial,
+    canonical: projectCanonical(CanonicalAccumulatorReducer.initial),
+    engine: EngineStateReducer.initial,
+    handles: toolHandleReducer.initial,
+  }
+
+  function step(state: TurnState, event: HarnessEvent): TurnState {
+    const _accumulator = CanonicalAccumulatorReducer.step(state._accumulator, event)
+    const canonical = projectCanonical(_accumulator)
+    const engine = EngineStateReducer.step(state.engine, event)
+    const handles = toolHandleReducer.step(state.handles, event)
+    return { _accumulator, canonical, engine, handles }
+  }
+
+  return { initial, step }
+}
 
 export interface ToolHandleState {
   readonly handles: ReadonlyMap<string, ToolHandle>
-}
-
-const toolHandleInitial: ToolHandleState = {
-  handles: new Map(),
 }
 
 export function createToolHandleReducer(toolkit: Toolkit): Reducer<ToolHandleState> {
@@ -314,11 +387,13 @@ export function createToolHandleReducer(toolkit: Toolkit): Reducer<ToolHandleSta
     }
   }
 
+  const initial: ToolHandleState = { handles: new Map() }
+
   function step(state: ToolHandleState, event: HarnessEvent): ToolHandleState {
     if (event._tag === "ToolInputStarted") {
       const model = stateModels.get(event.toolKey)
       if (!model) return state
-      const handle = createToolHandle(event.toolCallId, event.toolKey, model)
+      const handle = createToolHandle(event.toolCallId, event.providerToolCallId, event.toolKey, model)
       // Process the ToolInputStarted event through the handle
       const processed = handle.process(event)
       const handles = new Map(state.handles)
@@ -326,7 +401,9 @@ export function createToolHandleReducer(toolkit: Toolkit): Reducer<ToolHandleSta
       return { handles }
     }
 
-    if (event._tag === "TurnEnd" && event.outcome._tag === "Interrupted") {
+    if (event._tag === "TurnEnd") {
+      // Interrupt ALL non-terminal handles on any TurnEnd.
+      // The turn is over — any handle not in a terminal state should be interrupted.
       const handles = new Map(state.handles)
       for (const [id, handle] of handles) {
         if (handle.state.phase !== "completed" && handle.state.phase !== "error" && handle.state.phase !== "rejected") {
@@ -341,10 +418,10 @@ export function createToolHandleReducer(toolkit: Toolkit): Reducer<ToolHandleSta
       event._tag === "ToolInputFieldChunk" ||
       event._tag === "ToolInputFieldComplete" ||
       event._tag === "ToolInputReady" ||
+      event._tag === "ToolInputRejected" ||
       event._tag === "ToolExecutionStarted" ||
       event._tag === "ToolExecutionEnded" ||
-      event._tag === "ToolEmission" ||
-      event._tag === "ToolResultFormatted"
+      event._tag === "ToolEmission"
     ) {
       const existing = state.handles.get(event.toolCallId)
       if (!existing) return state
@@ -358,5 +435,5 @@ export function createToolHandleReducer(toolkit: Toolkit): Reducer<ToolHandleSta
     return state
   }
 
-  return { initial: toolHandleInitial, step }
+  return { initial, step }
 }

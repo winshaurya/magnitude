@@ -40,5 +40,5 @@ export interface ForkSetupContext {
   readonly forkId: string
   readonly roleId: RoleId
   readonly cwd: string
-  readonly workspacePath: string
+  readonly scratchpadPath: string
 }

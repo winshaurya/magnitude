@@ -26,7 +26,7 @@ function summarizeToolCounts(toolCounts: ForkActivityMessage['toolCounts']) {
     else if (name.includes('edit') || name.includes('patch') || name.includes('replace')) buckets.edit += count
     else if (name.includes('write') || name.includes('create')) buckets.write += count
     else if (name.includes('search') || name.includes('grep') || name.includes('glob') || name.includes('find')) buckets.search += count
-    else if (name.includes('web') || name.includes('fetch') || name.includes('browser')) buckets.web += count
+    else if (name.includes('web') || name.includes('fetch')) buckets.web += count
     else if (name.includes('bash') || name.includes('shell') || name.includes('exec')) buckets.bash += count
     else if (name.includes('command') || name.includes('cmd')) buckets.cmd += count
     else if (name.includes('mcp')) buckets.mcp += count

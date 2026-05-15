@@ -1,9 +1,10 @@
-import type { ToolCallId } from "@magnitudedev/ai"
+import type { ProviderToolCallId, ToolCallId } from "@magnitudedev/ai"
 import type { HarnessEvent, ToolLifecycleEvent, ToolExecutionEnded } from "../events"
 import type { BaseState, StateModel } from "./state-model"
 
 export interface ToolHandle {
   readonly toolCallId: ToolCallId
+  readonly providerToolCallId: ProviderToolCallId
   readonly toolKey: string
   readonly state: BaseState
   readonly process: (event: HarnessEvent) => ToolHandle
@@ -12,10 +13,11 @@ export interface ToolHandle {
 
 export function createToolHandle(
   toolCallId: ToolCallId,
+  providerToolCallId: ProviderToolCallId,
   toolKey: string,
   model: StateModel,
 ): ToolHandle {
-  return buildHandle(toolCallId, toolKey, model.initial, model.reduce)
+  return buildHandle(toolCallId, providerToolCallId, toolKey, model.initial, model.reduce)
 }
 
 function isToolLifecycleEvent(event: HarnessEvent): event is ToolLifecycleEvent {
@@ -24,11 +26,10 @@ function isToolLifecycleEvent(event: HarnessEvent): event is ToolLifecycleEvent 
     case 'ToolInputFieldChunk':
     case 'ToolInputFieldComplete':
     case 'ToolInputReady':
-    case 'ToolInputDecodeFailed':
+    case 'ToolInputRejected':
     case 'ToolExecutionStarted':
     case 'ToolExecutionEnded':
     case 'ToolEmission':
-    case 'ToolResultFormatted':
       return true
     default:
       return false
@@ -37,28 +38,31 @@ function isToolLifecycleEvent(event: HarnessEvent): event is ToolLifecycleEvent 
 
 function buildHandle(
   toolCallId: ToolCallId,
+  providerToolCallId: ProviderToolCallId,
   toolKey: string,
   state: BaseState,
   reduce: (state: BaseState, event: ToolLifecycleEvent) => BaseState,
 ): ToolHandle {
   return {
     toolCallId,
+    providerToolCallId,
     toolKey,
     get state() { return state },
     process(event: HarnessEvent): ToolHandle {
       if (!isToolLifecycleEvent(event)) return this
       const reduced = reduce(state, event)
-      return buildHandle(toolCallId, toolKey, reduced, reduce)
+      return buildHandle(toolCallId, providerToolCallId, toolKey, reduced, reduce)
     },
     interrupt(): ToolHandle {
       const interruptEvent: ToolLifecycleEvent = {
         _tag: 'ToolExecutionEnded',
         toolCallId,
+        providerToolCallId,
         toolName: '',
         toolKey,
         result: { _tag: 'Interrupted' },
       } satisfies ToolExecutionEnded
-      return buildHandle(toolCallId, toolKey, reduce(state, interruptEvent), reduce)
+      return buildHandle(toolCallId, providerToolCallId, toolKey, reduce(state, interruptEvent), reduce)
     },
   }
 }

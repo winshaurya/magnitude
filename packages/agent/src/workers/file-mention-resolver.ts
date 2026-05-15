@@ -3,7 +3,7 @@ import { Effect } from 'effect'
 import { Worker } from '@magnitudedev/event-core'
 import { logger } from '@magnitudedev/logger'
 import type { AppEvent, MentionAttachment, ResolvedMention } from '../events'
-import { resolveFileRefPath } from '../workspace/file-ref-resolution'
+import { resolveFileRefPath } from '../scratchpad/file-ref-resolution'
 import { SessionContextProjection } from '../projections/session-context'
 import { Fs } from '../services/fs'
 
@@ -74,12 +74,12 @@ async function resolveDirectoryMention(path: string, absolutePath: string, fs: E
 
 async function resolveMention(
   cwd: string,
-  workspacePath: string,
+  scratchpadPath: string,
   attachment: MentionAttachment,
   fs: Effect.Effect.Success<typeof Fs>,
   allowedPrefixes?: string[]
 ): Promise<ResolvedMention> {
-  const resolved = resolveFileRefPath(attachment.path, cwd, workspacePath)
+  const resolved = resolveFileRefPath(attachment.path, cwd, scratchpadPath)
   if (!resolved) {
     throw new Error(`Path not found: ${attachment.path}`)
   }
@@ -128,8 +128,8 @@ export const FileMentionResolver = Worker.define<AppEvent>()({
       const fs = yield* Fs
       const sessionContext = yield* read(SessionContextProjection)
       const cwd = sessionContext.context?.cwd
-      const workspacePath = sessionContext.context?.workspacePath
-      if (!workspacePath) throw new Error('workspacePath not available in session context')
+      const scratchpadPath = sessionContext.context?.scratchpadPath
+      if (!scratchpadPath) throw new Error('scratchpadPath not available in session context')
 
       const resolvedMentions = yield* Effect.promise(async () => {
         const results: ResolvedMention[] = []
@@ -144,7 +144,7 @@ export const FileMentionResolver = Worker.define<AppEvent>()({
           }
 
           try {
-            results.push(await resolveMention(cwd, workspacePath, mention, fs, [workspacePath]))
+            results.push(await resolveMention(cwd, scratchpadPath, mention, fs, [scratchpadPath]))
           } catch (error) {
             results.push({
               path: mention.path,

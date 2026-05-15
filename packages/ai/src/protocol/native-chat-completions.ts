@@ -9,6 +9,7 @@ import type { ConnectionError, StreamError } from "../errors/model-error"
 import { defaultClassifyConnectionError, defaultClassifyStreamError } from "../errors/classify"
 import { modelDefine } from "../model/define"
 import type { ModelSpec } from "../model/model-spec"
+import type { ModelCapabilities } from "../model/capabilities"
 
 // ---------------------------------------------------------------------------
 // Pre-built options for the native chat completions format
@@ -48,6 +49,7 @@ interface NativeChatCompletionsModelConfig<
   ) => Partial<ChatCompletionsRequest>
   readonly classifyConnectionError?: (failure: HttpConnectionFailure) => TConnectionError
   readonly classifyStreamError?: (failure: StreamFailure) => TStreamError
+  readonly capabilities?: ModelCapabilities
 }
 
 // ---------------------------------------------------------------------------
@@ -124,6 +126,7 @@ function model<
 
     classifyConnectionError: classifyConnection as (failure: HttpConnectionFailure) => TConnectionError,
     classifyStreamError: classifyStream as (failure: StreamFailure) => TStreamError,
+    capabilities: config.capabilities,
 
     buildWireRequest: (prompt, tools, callOptions) => {
       // 1. Apply option defs to get wire fragments

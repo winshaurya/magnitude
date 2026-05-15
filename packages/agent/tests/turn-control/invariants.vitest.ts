@@ -22,7 +22,7 @@ describe('turn control invariants', () => {
       const events = eventsForFork(h, null)
       assertNoTurnIdMismatch(events)
       yield* assertTurnStateAligned(h)
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('multiple sequential turns preserve pairing', () =>
@@ -35,7 +35,7 @@ describe('turn control invariants', () => {
 
       const events = eventsForFork(h, null)
       assertNoTurnIdMismatch(events)
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('failed completion still matches active turn ID', () =>
@@ -46,7 +46,7 @@ describe('turn control invariants', () => {
 
       assertNoTurnIdMismatch(eventsForFork(h, null))
       yield* assertTurnStateAligned(h)
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('turn_outcome preserves turn-control alignment invariants', () =>
@@ -60,7 +60,7 @@ describe('turn control invariants', () => {
 
       const turn = yield* h.projectionFork(TurnProjection.Tag, null)
       expect(turn._tag === 'idle' || turn.turnId.length > 0).toBe(true)
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('root and subagent forks remain ID-consistent independently', () =>
@@ -97,6 +97,6 @@ describe('turn control invariants', () => {
       assertNoTurnIdMismatch(eventsForFork(h, null))
       yield* assertTurnStateAligned(h, null)
       yield* assertTurnStateAligned(h, 'fork-a')
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 })

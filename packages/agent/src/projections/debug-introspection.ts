@@ -11,11 +11,11 @@ import { DisplayProjection } from './display'
 import { AgentRoutingProjection } from './agent-routing'
 import { AgentStatusProjection } from './agent-status'
 import { TurnProjection } from './turn'
-import { WindowProjection } from './window'
+import { WindowProjection } from '../window'
 import { CompactionProjection } from './compaction'
 
 import { SessionContextProjection } from './session-context'
-import { ReplayProjection } from './replay'
+import { HarnessStateProjection } from './harness-state'
 import { ConfigAmbient, getRoleConfig } from '../ambient/config-ambient'
 import { getForkInfo } from '../agents/registry'
 
@@ -54,7 +54,7 @@ interface ResolvedProjections {
   compactionProj: Effect.Effect.Success<typeof CompactionProjection.Tag>
 
   sessionProj: Effect.Effect.Success<typeof SessionContextProjection.Tag>
-  replayProj: Effect.Effect.Success<typeof ReplayProjection.Tag>
+  harnessStateProj: Effect.Effect.Success<typeof HarnessStateProjection.Tag>
 }
 
 function resolveProjections() {
@@ -68,7 +68,7 @@ function resolveProjections() {
       compactionProj: yield* CompactionProjection.Tag,
 
       sessionProj: yield* SessionContextProjection.Tag,
-      replayProj: yield* ReplayProjection.Tag,
+      harnessStateProj: yield* HarnessStateProjection.Tag,
     } satisfies ResolvedProjections
   })
 }
@@ -88,14 +88,14 @@ function buildSnapshot(
     const compactionRaw = yield* SubscriptionRef.get(projs.compactionProj.state)
 
     const sessionState = yield* SubscriptionRef.get(projs.sessionProj.state)
-    const replayRaw = yield* SubscriptionRef.get(projs.replayProj.state)
+    const harnessStateRaw = yield* SubscriptionRef.get(projs.harnessStateProj.state)
 
     const displayForkState = displayRaw.forks.get(forkId)
     const turnForkState = turnRaw.forks.get(forkId)
     const memoryForkState = memoryRaw.forks.get(forkId)
     const compactionForkState = compactionRaw.forks.get(forkId)
 
-    const replayForkState = replayRaw.forks.get(forkId)
+    const harnessStateForkState = harnessStateRaw.forks.get(forkId)
 
     const projections: ProjectionSnapshot[] = [
 
@@ -106,7 +106,7 @@ function buildSnapshot(
       { name: 'CompactionProjection', state: compactionForkState, timestamp },
       { name: 'DisplayProjection', state: displayForkState, timestamp },
       { name: 'SessionContextProjection', state: sessionState, timestamp },
-      { name: 'ReplayProjection', state: replayForkState, timestamp },
+      { name: 'HarnessStateProjection', state: harnessStateForkState ?? null, timestamp },
     ]
 
     let contextUsage: ContextUsage | undefined
@@ -116,11 +116,11 @@ function buildSnapshot(
       const info = getForkInfo(statusState, forkId)
       const limits = info ? getRoleConfig(configState, info.roleId) : getRoleConfig(configState, 'leader')
       contextUsage = {
-        currentTokens: compactionForkState.tokenEstimate,
+        currentTokens: memoryForkState.tokenEstimate,
         hardCap: limits.hardCap,
         softCap: limits.softCap,
         messageCount: memoryForkState.messages.length,
-        usagePercent: Math.round((compactionForkState.tokenEstimate / limits.hardCap) * 100),
+        usagePercent: Math.round((memoryForkState.tokenEstimate / limits.hardCap) * 100),
         shouldCompact: compactionForkState.shouldCompact,
         isCompacting: compactionForkState._tag !== 'idle',
       }
@@ -144,7 +144,7 @@ export function createDebugStream(forkId: string | null) {
       toTrigger(projs.compactionProj.state.changes),
 
       toTrigger(projs.sessionProj.state.changes),
-      toTrigger(projs.replayProj.state.changes),
+      toTrigger(projs.harnessStateProj.state.changes),
     ], { concurrency: 'unbounded' })
 
     const debouncedStream = Stream.debounce(mergedStream, '100 millis')

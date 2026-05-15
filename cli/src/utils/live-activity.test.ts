@@ -77,20 +77,6 @@ describe('live-activity selector', () => {
     expect(selectLatestLiveActivityFromThinkSteps(steps)).toBe('Fallback label')
   })
 
-  it('formats browser live text with empty detail cleanly', () => {
-    const steps = [
-      {
-        id: '1',
-        type: 'tool',
-        toolKey: 'click',
-        label: 'Generic tool label',
-        visualState: { label: 'Click element', detail: '   ' },
-      },
-    ] as any as ThinkBlockStep[]
-
-    expect(selectLatestLiveActivityFromThinkSteps(steps)).toBe('Click element')
-  })
-
   it('falls back to label for unsupported artifactCreate tool key', () => {
     const steps = [
       {
@@ -127,36 +113,6 @@ describe('live-activity selector', () => {
 
     expect(selectLatestLiveActivityFromThinkSteps(activeArtifactWrite)).toBe('Writing artifact draft')
     expect(selectLatestLiveActivityFromThinkSteps(activeFileEdit)).toBe('Editing src/app.ts')
-  })
-
-  it('avoids awkward punctuation spacing in browser live text', () => {
-    const steps = [
-      {
-        id: '1',
-        type: 'tool',
-        toolKey: 'navigate',
-        label: 'Generic tool label',
-        visualState: { label: 'Navigate to', detail: ' https://example.com ' },
-      },
-      {
-        id: '2',
-        type: 'tool',
-        toolKey: 'evaluate',
-        label: 'Generic tool label',
-        visualState: { label: 'Evaluate(', detail: 'window.location)' },
-      },
-      {
-        id: '3',
-        type: 'tool',
-        toolKey: 'type',
-        label: 'Generic tool label',
-        visualState: { label: 'Type value', detail: ': "hello"' },
-      },
-    ] as any as ThinkBlockStep[]
-
-    expect(selectLatestLiveActivityFromThinkSteps([steps[0]])).toBe('Navigate to https://example.com')
-    expect(selectLatestLiveActivityFromThinkSteps([steps[1]])).toBe('Evaluate(window.location)')
-    expect(selectLatestLiveActivityFromThinkSteps([steps[2]])).toBe('Type value: "hello"')
   })
 
   it('uses shell fallback labels as provided by the producer', () => {

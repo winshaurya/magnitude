@@ -91,7 +91,7 @@ describe('TaskGraphProjection defensive guards', () => {
         timestamp: ts(3),
         forkId: null,
         taskId: 't2',
-        patch: { status: 'working' },
+        patch: { status: 'pending' },
       } satisfies TaskUpdated,
     ])
 

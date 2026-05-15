@@ -3,22 +3,22 @@ import type { createCodingAgentClient } from '@magnitudedev/agent'
 
 type AgentClient = Awaited<ReturnType<typeof createCodingAgentClient>>
 
-// TODO: Simplify API — take a single factory `() => Promise<{ client, workspacePath }>` as the only argument.
+// TODO: Simplify API — take a single factory `() => Promise<{ client, scratchpadPath }>` as the only argument.
 // The hook should call it lazily on first send/ensureReady, cache the result, and handle dispose on unmount.
 // This would eliminate setFactory/setClient and let the consumer just pass a creation function.
 // Blocked because the current setupClient in app.tsx has extensive event subscription logic that
 // would need to be moved into separate useEffects keyed on `client` before the factory can be self-contained.
 export function useLazyClient() {
   const [client, setClientState] = useState<AgentClient | null>(null)
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null)
+  const [scratchpadPath, setScratchpadPath] = useState<string | null>(null)
   const factoryRef = useRef<(() => Promise<AgentClient>) | null>(null)
-  const initPromiseRef = useRef<Promise<{ client: AgentClient; workspacePath: string | null }> | null>(null)
+  const initPromiseRef = useRef<Promise<{ client: AgentClient; scratchpadPath: string | null }> | null>(null)
   const clientRef = useRef<AgentClient | null>(null)
-  const workspacePathRef = useRef<string | null>(null)
+  const scratchpadPathRef = useRef<string | null>(null)
 
-  const ensureReady = useCallback(async (): Promise<{ client: AgentClient; workspacePath: string | null }> => {
+  const ensureReady = useCallback(async (): Promise<{ client: AgentClient; scratchpadPath: string | null }> => {
     if (clientRef.current) {
-      return { client: clientRef.current, workspacePath: workspacePathRef.current }
+      return { client: clientRef.current, scratchpadPath: scratchpadPathRef.current }
     }
     if (initPromiseRef.current) {
       return initPromiseRef.current
@@ -27,7 +27,7 @@ export function useLazyClient() {
       const factory = factoryRef.current
       factoryRef.current = null
       const promise = factory().then((newClient) => {
-        return { client: newClient, workspacePath: workspacePathRef.current }
+        return { client: newClient, scratchpadPath: scratchpadPathRef.current }
       })
       initPromiseRef.current = promise
       return promise
@@ -59,10 +59,10 @@ export function useLazyClient() {
 
   const setClient = useCallback((newClient: AgentClient, wp: string | null) => {
     clientRef.current = newClient
-    workspacePathRef.current = wp
+    scratchpadPathRef.current = wp
     setClientState(newClient)
-    setWorkspacePath(wp)
+    setScratchpadPath(wp)
   }, [])
 
-  return { client, workspacePath, send, ensureReady, setFactory, setClient }
+  return { client, scratchpadPath, send, ensureReady, setFactory, setClient }
 }

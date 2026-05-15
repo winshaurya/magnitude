@@ -4,7 +4,9 @@ import { Button } from './button'
 import { useTheme } from '../hooks/use-theme'
 import { writeTextToClipboard } from '../utils/clipboard'
 import { formatShortTimestamp } from '../utils/strings'
+import { formatChord } from '../utils/chord'
 import { BOX_CHARS } from '../utils/ui-constants'
+import type { ActionId, ErrorCta } from '@magnitudedev/agent'
 
 const COPY_FEEDBACK_RESET_MS = 2000
 
@@ -12,23 +14,24 @@ interface ErrorMessageProps {
   tag?: string | null
   message: string
   timestamp: number
-  cta?: {
-    readonly label: string
-    readonly url: string
-  }
+  cta?: ErrorCta
+  onAction?: (actionId: ActionId) => void
 }
 
-export const ErrorMessage = memo(function ErrorMessage({ tag, message, timestamp, cta }: ErrorMessageProps) {
+export const ErrorMessage = memo(function ErrorMessage({ tag, message, timestamp, cta, onAction }: ErrorMessageProps) {
   const theme = useTheme()
   const [isHovered, setIsHovered] = useState(false)
   const [isCopied, setIsCopied] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mouseDownRef = useRef(false)
 
-  // Copy-link states for the CTA copy button
+  // Copy-link states for the CTA copy button (URL CTAs only)
   const [linkCopied, setLinkCopied] = useState(false)
   const [linkHovered, setLinkHovered] = useState(false)
   const linkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Action-button hover state
+  const [actionHovered, setActionHovered] = useState(false)
 
   const showLinkCopied = useCallback(() => {
     setLinkCopied(true)
@@ -47,7 +50,7 @@ export const ErrorMessage = memo(function ErrorMessage({ tag, message, timestamp
   const fullError = `${prefix} ${message}`
 
   const handleCopyLink = useCallback(async () => {
-    if (!cta) return
+    if (!cta || cta.kind !== 'url') return
     try {
       await writeTextToClipboard(cta.url)
       showLinkCopied()
@@ -55,6 +58,11 @@ export const ErrorMessage = memo(function ErrorMessage({ tag, message, timestamp
       // Error logged by writeTextToClipboard
     }
   }, [cta, showLinkCopied])
+
+  const handleAction = useCallback(() => {
+    if (!cta || cta.kind !== 'action' || !onAction) return
+    onAction(cta.actionId)
+  }, [cta, onAction])
 
   const handleCopy = async () => {
     try {
@@ -107,11 +115,11 @@ export const ErrorMessage = memo(function ErrorMessage({ tag, message, timestamp
         <text style={{ fg: theme.error }}>
           {fullError}
         </text>
-        {cta && (
+
+        {cta && cta.kind === 'url' && (
           <box style={{ flexDirection: 'row' }}>
-            <text style={{ fg: theme.muted }}>{'→ '}</text>
+            <text style={{ fg: theme.muted }}>{`${cta.label} → `}</text>
             <text style={{ fg: theme.primary }} attributes={TextAttributes.UNDERLINE}>{cta.url}</text>
-            <text style={{ fg: theme.muted }}>{` — ${cta.label.toLowerCase()}`}</text>
             <text style={{ fg: theme.muted }}>{' '}</text>
             <Button
               onClick={handleCopyLink}
@@ -123,6 +131,19 @@ export const ErrorMessage = memo(function ErrorMessage({ tag, message, timestamp
               </text>
             </Button>
           </box>
+        )}
+
+        {cta && cta.kind === 'action' && (
+          <Button
+            style={{ alignSelf: 'flex-start' }}
+            onClick={handleAction}
+            onMouseOver={() => setActionHovered(true)}
+            onMouseOut={() => setActionHovered(false)}
+          >
+            <text style={{ fg: actionHovered ? theme.foreground : theme.primary }}>
+              {`[${cta.label} (${formatChord(cta.chord)})]`}
+            </text>
+          </Button>
         )}
       </box>
 

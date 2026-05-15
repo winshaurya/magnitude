@@ -28,7 +28,7 @@ export const fileReadDisplay = createToolDisplay<FileReadState>({
               <span style={{ fg: isError ? theme.error : theme.info }}>{isError ? '✗ ' : '→ '}</span>
               {isRunning ? (
                 <>
-                  <span style={{ fg: theme.foreground }}>{'Reading '}</span>
+                  <span style={{ fg: theme.foreground }}>{'Read '}</span>
                   <span style={{ fg: theme.muted }}>{state.path || '...'}</span>
                   <ShimmerText text="..." interval={SHIMMER_INTERVAL_MS} primaryColor={theme.secondary} />
                 </>
@@ -56,7 +56,6 @@ export const fileReadDisplay = createToolDisplay<FileReadState>({
   },
   summary: (state) => {
     const path = state.path || 'file';
-    if (state.phase === 'streaming' || state.phase === 'executing') return `Reading ${path}`;
     return `Read ${path}`;
   },
 });

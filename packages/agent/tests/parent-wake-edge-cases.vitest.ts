@@ -6,7 +6,7 @@ import { MockTurnScriptTag } from '../src/test-harness/turn-script'
 import { response } from '../src/test-harness/response-builder'
 
 const spawnWorkerXml = (id: string, title: string, message: string) =>
-  response().createTask(id, title).spawnWorker(id, message).yield().xml!
+  response().createTask(id, title).spawnWorker(id, 'engineer', id, message).yield().xml!
 
 describe('parent wake edge cases', () => {
   it.live('parent woken when subagent has unexpected error', () =>

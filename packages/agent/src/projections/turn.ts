@@ -12,12 +12,11 @@ import { Data } from 'effect'
 import { logger } from '@magnitudedev/logger'
 import { outcomeWillChainContinue } from '../events'
 import type { AppEvent, TurnOutcomeEvent } from '../events'
+import { computeDelayMs, getRetryAfterHint } from '../util/retry-backoff'
 import type { ToolKey } from '../tools/toolkits'
 import type { ToolResult } from '@magnitudedev/harness'
 import { AgentRoutingProjection } from './agent-routing'
 import { UserMessageResolutionProjection } from './user-message-resolution'
-import { CompactionProjection } from './compaction'
-
 import { createId } from '../util/id'
 
 // =============================================================================
@@ -35,7 +34,7 @@ export interface ToolCall {
 
 export type TurnTrigger =
   | { readonly _tag: 'communication' }
-  | { readonly _tag: 'chain_continue'; readonly chainId: string }
+  | { readonly _tag: 'chain_continue'; readonly chainId: string; readonly notBefore?: number }
   | { readonly _tag: 'subagent_completed'; readonly agentId: string; readonly turnId: string }
   | { readonly _tag: 'wake' }
   | { readonly _tag: 'agent_created'; readonly agentId: string }
@@ -61,6 +60,12 @@ interface TurnAmbient {
   readonly pendingInboundCommunications: readonly PendingInboundCommunication[]
   readonly softInterrupted: boolean
   readonly parentForkId: string | null
+  /**
+   * Consecutive ConnectionFailure turn outcomes for this fork. Reset to 0 on
+   * any other outcome. Used for backoff scheduling (notBefore on chain_continue
+   * triggers) and Cortex-side cap enforcement.
+   */
+  readonly connectionRetryCount: number
 }
 
 export class TurnIdle extends Data.TaggedClass('idle')<TurnAmbient> {}
@@ -132,7 +137,6 @@ export const TurnProjection = Projection.defineForked<AppEvent, TurnLifecycleSta
   reads: [
     AgentRoutingProjection,
     UserMessageResolutionProjection,
-    CompactionProjection,
   ] as const,
 
   signals: {
@@ -159,6 +163,7 @@ export const TurnProjection = Projection.defineForked<AppEvent, TurnLifecycleSta
     pendingInboundCommunications: [],
     softInterrupted: false,
     parentForkId: null,
+    connectionRetryCount: 0,
   }),
 
   eventHandlers: {
@@ -240,9 +245,22 @@ export const TurnProjection = Projection.defineForked<AppEvent, TurnLifecycleSta
       if (fork.turnId !== event.turnId) return fork
 
       const shouldEnqueueContinue = outcomeWillChainContinue(event.outcome) && !fork.softInterrupted
+      const isConnectionFailure = event.outcome._tag === 'ConnectionFailure'
+
+      // Increment retry count on ConnectionFailure, reset on anything else.
+      // Cortex enforces the cap by transforming the outcome before publishing,
+      // so the projection trusts what it sees here.
+      const nextRetryCount = isConnectionFailure ? fork.connectionRetryCount + 1 : 0
+
+      // For connection-failure retries, schedule the chain_continue with a
+      // notBefore timestamp computed from the retry count and any server hint.
+      const notBefore =
+        shouldEnqueueContinue && isConnectionFailure
+          ? event.timestamp + computeDelayMs(fork.connectionRetryCount, getRetryAfterHint(event.outcome))
+          : undefined
 
       const nextTriggers = shouldEnqueueContinue
-        ? [...fork.triggers, { _tag: 'chain_continue', chainId: fork.chainId } satisfies TurnTrigger]
+        ? [...fork.triggers, { _tag: 'chain_continue', chainId: fork.chainId, ...(notBefore !== undefined ? { notBefore } : {}) } satisfies TurnTrigger]
         : fork.triggers
 
       emit.turnTerminated({
@@ -262,6 +280,7 @@ export const TurnProjection = Projection.defineForked<AppEvent, TurnLifecycleSta
         completedTurns: fork.completedTurns + 1,
         triggers: nextTriggers,
         softInterrupted: false,
+        connectionRetryCount: nextRetryCount,
       })
     },
   },

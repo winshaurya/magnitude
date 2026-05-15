@@ -10,6 +10,7 @@ export interface FileEditState extends BaseState {
   streamingTarget: 'old' | 'new' | null
   baseContent: string | null
   diffs: EditDiff[]
+  errorMessage?: string
 }
 
 const initial: Omit<FileEditState, 'phase'> = {
@@ -131,15 +132,15 @@ export const fileEditModel = defineStateModel(editTool)<FileEditState>({
             return applyProvisionalDiffs({ ...state, phase: 'completed', streamingTarget: null })
           case 'Error':
             return { ...state, phase: 'error', streamingTarget: null }
-          case 'Rejected':
-            return { ...state, phase: 'rejected', streamingTarget: null }
+          case 'Denied':
+            return { ...state, phase: 'rejected', streamingTarget: null, errorMessage: String(event.result.denial) }
           case 'Interrupted':
             return { ...state, phase: 'interrupted', streamingTarget: null }
           default:
             return state
         }
       }
-      case 'ToolInputDecodeFailed':
+      case 'ToolInputRejected':
         return { ...state, phase: 'error', errorMessage: event.issue.message }
       case 'ToolInputFieldComplete':
       default:

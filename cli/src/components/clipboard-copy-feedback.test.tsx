@@ -55,7 +55,6 @@ mock.module('../hooks/use-safe-event', () => ({
   useSafeEvent: (fn: unknown) => fn,
 }))
 
-const { OAuthOverlay } = await import('./oauth-overlay')
 const { CopyButton } = await import('./panel-buttons')
 const { BlockRenderer } = await import('../markdown/block-renderer')
 
@@ -88,39 +87,6 @@ describe('copy feedback timing', () => {
   afterEach(() => {
     ;(Bun as any).spawnSync = originalSpawnSync
     writeImpl = null
-  })
-
-  test('oauth copy shows copied only after onCopyUrl resolves', async () => {
-    const pending = deferred()
-    writeImpl = () => pending.promise
-
-    let renderer!: ReturnType<typeof create>
-    await act(async () => {
-      renderer = create(
-        <OAuthOverlay
-          providerName="Provider"
-          mode="paste"
-          url="https://example.com"
-          onCancel={() => {}}
-          onCopyUrl={() => pending.promise}
-        />,
-      )
-    })
-
-    const copyButton = findCopyBox(renderer.root)
-    expect(copyButton).toBeDefined()
-
-    await act(async () => {
-      copyButton!.props.onMouseDown()
-      copyButton!.props.onMouseUp()
-    })
-    expect(flattenText(renderer.toJSON())).not.toContain('[Copied ✓]')
-
-    await act(async () => {
-      pending.resolve()
-      await Promise.resolve()
-    })
-    expect(flattenText(renderer.toJSON())).toContain('[Copied ✓]')
   })
 
   test('panel copy does not show success on write failure', async () => {

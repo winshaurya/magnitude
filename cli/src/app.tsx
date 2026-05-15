@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useKeyboard, useRenderer } from '@opentui/react'
 import { Layer, Cause } from 'effect'
 
-import { createCodingAgentClient, ChatPersistence, getSessionTitleFromTaskGraph, fetchRoleProfiles, type DisplayState, type AgentStatusState, type AppEvent, type ErrorDisplayMessage, type CompactionState, type ToolStateProjectionState, type DebugSnapshot, type RoleProfile } from '@magnitudedev/agent'
+import { createCodingAgentClient, ChatPersistence, getSessionTitleFromTaskGraph, fetchRoleProfiles, classifyUnknownError, present, type DisplayState, type AgentStatusState, type AppEvent, type ErrorDisplayMessage, type CompactionState, type TurnState, type DebugSnapshot, type RoleProfile, type ActionId } from '@magnitudedev/agent'
+import { matchKeyToChord } from './utils/chord'
 import { loadSkills } from '@magnitudedev/skills'
 import { textParts } from '@magnitudedev/agent'
 import { JsonChatPersistence, loadSessionSummary } from './persistence'
@@ -55,9 +56,7 @@ import { ChatController } from './components/chat/chat-controller'
 import { useTasks } from './hooks/use-tasks'
 import { useLocalWidth } from './hooks/use-local-width'
 
-import { initTelemetry, trackSessionStart, SessionTracker } from '@magnitudedev/telemetry'
 
-import { setSessionTracker } from './utils/telemetry-state'
 import { TextAttributes, type KeyEvent } from '@opentui/core'
 
 import { createId } from '@magnitudedev/generate-id'
@@ -67,6 +66,7 @@ import { useFilePanel } from './hooks/use-file-panel'
 import { useLazyClient } from './hooks/use-lazy-client'
 import { useMagnitudeAuth } from './hooks/use-magnitude-auth'
 import { MagnitudeLoginScreen } from './components/magnitude-login-screen'
+import { WindowsWarningScreen } from './components/windows-warning-screen'
 import { createRoles, ROLE_IDS, type RoleId } from '@magnitudedev/roles'
 
 export const getSelectedForkContentVersion = (
@@ -141,10 +141,10 @@ function AppInner({
   const renderer = useRenderer()
   const storage = useStorage()
   const auth = useMagnitudeAuth()
-  const { client, workspacePath, send: clientSend, ensureReady: ensureClientReady, setFactory: setClientFactory, setClient: setLazyClient } = useLazyClient()
+  const { client, scratchpadPath, send: clientSend, ensureReady: ensureClientReady, setFactory: setClientFactory, setClient: setLazyClient } = useLazyClient()
 
   const [display, setDisplay] = useState<DisplayState | null>(null)
-  const [toolState, setToolState] = useState<ToolStateProjectionState | null>(null)
+  const [toolState, setToolState] = useState<TurnState | null>(null)
   const [agentStatusState, setAgentStatusState] = useState<AgentStatusState | null>(null)
   const [expandedForkStack, setExpandedForkStack] = useState<string[]>([])
   const expandedForkId = expandedForkStack.length > 0 ? expandedForkStack[expandedForkStack.length - 1] : null
@@ -155,8 +155,7 @@ function AppInner({
 
   const [forkDisplay, setForkDisplay] = useState<DisplayState | null>(null)
   const [forkTokenEstimate, setForkTokenEstimate] = useState(0)
-  const [forkLastActualInputTokens, setForkLastActualInputTokens] = useState<number | null>(null)
-  const [forkHasCompletedTurn, setForkHasCompletedTurn] = useState(false)
+
   const [forkIsCompacting, setForkIsCompacting] = useState(false)
 
   const [systemMessages, setSystemMessages] = useState<Array<{ id: string; text: string; timestamp: number }>>([])
@@ -176,14 +175,12 @@ function AppInner({
   const [composerHasContent, setComposerHasContent] = useState(false)
   const [restoredQueuedInputText, setRestoredQueuedInputText] = useState<string | null>(null)
   const [tokenEstimate, setTokenEstimate] = useState(0)
-  const [lastActualInputTokens, setLastActualInputTokens] = useState<number | null>(null)
-  const [hasCompletedTurn, setHasCompletedTurn] = useState(false)
   const [isCompacting, setIsCompacting] = useState(false)
   const turnStartTimeRef = useRef<number | null>(null)
   const hasAnimatedRef = useRef(skipAnimation)
 
   const formatFooterTokens = formatTokensCompact
-  const tokenUsage = lastActualInputTokens ?? (hasCompletedTurn ? tokenEstimate : null)
+  const tokenUsage = tokenEstimate > 0 ? tokenEstimate : null
   const contextPercent = (tokenUsage != null && contextHardCap) ? Math.round((tokenUsage / contextHardCap) * 100) : null
   const contextDisplayText = tokenUsage == null
     ? '-'
@@ -213,9 +210,6 @@ function AppInner({
 
 
 
-  // Browser setup overlay state
-  const [showBrowserSetup, setShowBrowserSetup] = useState(false)
-
   const [recentChatsSelectedIndex, setRecentChatsSelectedIndex] = useState(0)
 
   const [recentChats, setRecentChats] = useState<RecentChat[] | null>(null)
@@ -230,9 +224,7 @@ function AppInner({
     refreshRecentChats()
   }, [debugMode, refreshRecentChats])
 
-  useEffect(() => {
-    initTelemetry({ telemetryEnabled: true })
-  }, [])
+
 
   useEffect(() => {
     if (!auth.loaded || !auth.key) return
@@ -288,7 +280,7 @@ function AppInner({
       logger.warn({ error: err.message }, 'Failed to load skills')
     })
 
-    let resolvedWorkspacePath: string | null = null
+    let resolvedScratchpadPath: string | null = null
     let resolvedSessionId: string | null = null
 
     const createClient = async () => {
@@ -309,7 +301,7 @@ function AppInner({
       const activeSessionId = persistence.getSessionId()
       resolvedSessionId = activeSessionId
       onSessionId?.(activeSessionId)
-      resolvedWorkspacePath = storage.sessions.getWorkspacePath(activeSessionId) ?? null
+      resolvedScratchpadPath = storage.sessions.getScratchpadPath(activeSessionId) ?? null
       initLogger(persistence.getSessionId())
       clearSessionLog(persistence.getSessionId())
       logger.info({ logFile: getSessionLogPath(persistence.getSessionId()) }, 'Session logger initialized')
@@ -329,53 +321,31 @@ function AppInner({
         return
       }
       c = client
-      setLazyClient(client, resolvedWorkspacePath)
+      setLazyClient(client, resolvedScratchpadPath)
       onClientReady?.(client)
       renderer.setTerminalTitle("Magnitude")
-
-      // Telemetry tracking state
-      const sessionTracker = new SessionTracker()
-      setSessionTracker(sessionTracker)
 
       // Log all events to event log file + collect for debug panel
       client.onEvent((event) => {
         if (debugMode && mounted) {
           setDebugEvents(prev => [...prev, event])
         }
-
-        // Telemetry event tracking
-        if (event.type === 'session_initialized') {
-          trackSessionStart({
-            platform: event.context.platform,
-            shell: event.context.shell,
-            isResume: sessionSelection !== null && sessionSelection !== undefined,
-          })
-        }
-
-        if (event.type === 'user_message') {
-          sessionTracker.recordUserMessage()
-        }
-
-        if (event.type === 'turn_outcome') {
-          sessionTracker.recordTurn(event.providerId ?? null, event.modelId ?? null, event.inputTokens ?? 0, event.outputTokens ?? 0)
-        }
-
-        if (event.type === 'compaction_completed') {
-          sessionTracker.recordCompaction()
-        }
-        if (event.type === 'compaction_failed') {
-          sessionTracker.recordCompaction()
-        }
       })
 
       // Framework errors bypass the event system entirely — render directly in the TUI
       client.onError((error) => {
         if (!mounted) return
+        // Log full cause for debugging; surface a friendly message to the user.
+        logger.error({ tag: error._tag, cause: Cause.pretty(error.cause) }, 'Framework error')
+        const outcome = classifyUnknownError(error.cause)
+        const p = present(outcome)
+        if (p.surface !== 'inline') return
         const errorMsg: ErrorDisplayMessage = {
           id: createId(),
           type: 'error',
-          message: `[${error._tag}] ${Cause.pretty(error.cause)}`,
-          timestamp: Date.now()
+          message: p.message,
+          timestamp: Date.now(),
+          cta: p.cta,
         }
         setDisplay(prev => prev ? { ...prev, messages: [...prev.messages, errorMsg] } : prev)
       })
@@ -496,14 +466,14 @@ function AppInner({
   useEffect(() => {
     if (!client) return
 
-    const unsubscribe = client.state.compaction.subscribeFork(null, (state: CompactionState) => {
+    const unsubWindow = client.state.memory.subscribeFork(null, (state) => {
       setTokenEstimate(state.tokenEstimate)
-      setLastActualInputTokens(state.lastActualInputTokens)
-      setHasCompletedTurn(state.hasCompletedTurn)
+    })
+    const unsubCompaction = client.state.compaction.subscribeFork(null, (state: CompactionState) => {
       setIsCompacting(state._tag !== 'idle')
     })
 
-    return unsubscribe
+    return () => { unsubWindow(); unsubCompaction() }
   }, [client])
 
   const subscribeForkCompaction = useCallback((forkId: string, cb: (state: CompactionState) => void) => {
@@ -511,11 +481,16 @@ function AppInner({
     return client.state.compaction.subscribeFork(forkId, cb)
   }, [client])
 
+  const subscribeForkWindow = useCallback((forkId: string, cb: (state: { tokenEstimate: number }) => void) => {
+    if (!client) return () => {}
+    return client.state.memory.subscribeFork(forkId, cb)
+  }, [client])
+
   // Subscribe to tool state for file panel streaming support
   useEffect(() => {
     if (!client) return
 
-    const unsubscribe = client.state.toolState.subscribeFork(null, (state) => {
+    const unsubscribe = client.state.harnessState.subscribeFork(null, (state) => {
       setToolState(state)
     })
 
@@ -544,18 +519,16 @@ function AppInner({
   useEffect(() => {
     if (!client || !selectedForkId) {
       setForkTokenEstimate(0)
-      setForkLastActualInputTokens(null)
-      setForkHasCompletedTurn(false)
       setForkIsCompacting(false)
       return
     }
-    const unsubscribe = client.state.compaction.subscribeFork(selectedForkId, (state: CompactionState) => {
+    const unsubWindow = client.state.memory.subscribeFork(selectedForkId, (state) => {
       setForkTokenEstimate(state.tokenEstimate)
-      setForkLastActualInputTokens(state.lastActualInputTokens)
-      setForkHasCompletedTurn(state.hasCompletedTurn)
+    })
+    const unsubCompaction = client.state.compaction.subscribeFork(selectedForkId, (state: CompactionState) => {
       setForkIsCompacting(state._tag !== 'idle')
     })
-    return unsubscribe
+    return () => { unsubWindow(); unsubCompaction() }
   }, [client, selectedForkId])
 
   // Subscribe to debug stream when debug mode is enabled and panel is visible
@@ -735,6 +708,21 @@ function AppInner({
     process.kill(process.pid, 'SIGINT')
   }, [])
 
+  if (process.platform === 'win32') {
+    return (
+      <WindowsWarningScreen onExit={exitApp} />
+    )
+  }
+
+  if (auth.loaded && !auth.key) {
+    return (
+      <MagnitudeLoginScreen
+        onSubmit={auth.save}
+        onExit={exitApp}
+      />
+    )
+  }
+
   const openRecentChats = useCallback(() => {
     refreshRecentChats()
     setShowRecentChatsOverlay(true)
@@ -782,13 +770,20 @@ function AppInner({
     setSettingsOpen(true)
   }, [])
 
-  const openBrowserSetup = useCallback(() => {
-    setShowBrowserSetup(true)
-  }, [])
-
   const openUsage = useCallback(() => {
     setUsageOpen(true)
   }, [])
+
+  const dispatchErrorAction = useCallback((actionId: ActionId) => {
+    switch (actionId) {
+      case 'open-settings':
+        openSettings()
+        return
+      case 'open-usage':
+        openUsage()
+        return
+    }
+  }, [openSettings, openUsage])
 
   const onUsageClose = useCallback(() => {
     setUsageOpen(false)
@@ -836,9 +831,8 @@ function AppInner({
     activateSkill,
     initProject,
     openSettings,
-    openBrowserSetup,
     openUsage,
-  }), [resetConversation, showEphemeral, theme.error, exitApp, openRecentChats, enterBashMode, activateSkill, initProject, openSettings, openBrowserSetup, openUsage])
+  }), [resetConversation, showEphemeral, theme.error, exitApp, openRecentChats, enterBashMode, activateSkill, initProject, openSettings, openUsage])
 
 
 
@@ -870,7 +864,6 @@ function AppInner({
   const activeOverlayKind =
     showRecentChatsOverlay ? 'recent-chats'
     : (expandedForkId && client) ? 'fork-detail'
-    : showBrowserSetup ? 'browser-setup'
     : settingsOpen ? 'settings'
     : usageOpen ? 'usage'
     : 'none'
@@ -913,6 +906,33 @@ function AppInner({
     ),
   )
 
+  // Find the most recent inline error with an action CTA — its chord is the
+  // active shortcut. Older actionable errors are still clickable via mouse,
+  // but their chord is shadowed by the most recent.
+  const latestActionableErrorCta = useMemo(() => {
+    const messages = (activeDisplay ?? display)?.messages ?? []
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]
+      if (m.type === 'error' && m.cta?.kind === 'action') return m.cta
+    }
+    return null
+  }, [activeDisplay, display])
+
+  useKeyboard(
+    useCallback(
+      (key: KeyEvent) => {
+        if (key.defaultPrevented) return
+        if (activeOverlayKind !== 'none') return
+        if (!latestActionableErrorCta) return
+        const chord = matchKeyToChord(key)
+        if (chord !== latestActionableErrorCta.chord) return
+        key.preventDefault()
+        dispatchErrorAction(latestActionableErrorCta.actionId)
+      },
+      [activeOverlayKind, latestActionableErrorCta, dispatchErrorAction],
+    ),
+  )
+
 
   const {
     selectedFile,
@@ -926,7 +946,7 @@ function AppInner({
   } = useFilePanel({
     display: activeDisplay ?? display,
     toolState,
-    workspacePath,
+    scratchpadPath,
     projectRoot: process.cwd(),
   })
 
@@ -1046,15 +1066,6 @@ function AppInner({
     })
   }, [clientSend])
 
-  if (auth.loaded && !auth.key) {
-    return (
-      <MagnitudeLoginScreen
-        onSubmit={auth.save}
-        onExit={exitApp}
-      />
-    )
-  }
-
   if (!display) {
     return (
       <SessionLoadingView
@@ -1066,8 +1077,6 @@ function AppInner({
 
   const overlayContent = (
     <AppOverlays
-      showBrowserSetup={showBrowserSetup}
-      setShowBrowserSetup={setShowBrowserSetup}
       settingsVisible={settingsOpen}
       onSettingsClose={onSettingsClose}
       auth={auth}
@@ -1085,11 +1094,12 @@ function AppInner({
       forkContextHardCap={forkContextHardCap}
       popForkOverlay={popForkOverlay}
       pushForkOverlay={pushForkOverlay}
-      workspacePath={workspacePath}
+      scratchpadPath={scratchpadPath}
       projectRoot={process.cwd()}
       showCopiedToast={clipboardToast}
       usageVisible={usageOpen}
       onUsageClose={onUsageClose}
+      onErrorAction={dispatchErrorAction}
     />
   )
 
@@ -1192,6 +1202,7 @@ function AppInner({
                     inputHasText={composerHasContent}
                     onFileClick={openFile}
                     onForkExpand={pushForkOverlay}
+                    onErrorAction={dispatchErrorAction}
                   />
                 </ErrorBoundary>
               )
@@ -1222,8 +1233,7 @@ function AppInner({
 
 
 
-  const composerCanFocus = !showBrowserSetup
-    && !showRecentChatsOverlay
+  const composerCanFocus = !showRecentChatsOverlay
     && !settingsOpen
     && !usageOpen
     && expandedForkId === null
@@ -1267,8 +1277,8 @@ function AppInner({
               modelsConfigured: true,
               modelSummary: activeModelSummary,
               tokenUsage: selectedForkId
-                ? (forkLastActualInputTokens ?? (forkHasCompletedTurn ? forkTokenEstimate : null))
-                : (lastActualInputTokens ?? (hasCompletedTurn ? tokenEstimate : null)),
+                ? (forkTokenEstimate > 0 ? forkTokenEstimate : null)
+                : tokenUsage,
               contextHardCap,
               isCompacting: selectedForkId ? forkIsCompacting : isCompacting,
               theme,
@@ -1283,9 +1293,9 @@ function AppInner({
               submitUserMessageToFork: ({ forkId, message, attachments }) => handleSubmitViaClientBoundary({ forkId, message, attachments }),
               runSlashCommand: (commandText: string) => routeSlashCommand(commandText, commandContext),
               executeBash: async (command: string) => {
-                const { workspacePath: wp } = await ensureClientReady()
+                const { scratchpadPath: wp } = await ensureClientReady()
                 return executeBashCommand(command, {
-                  workspacePath: wp!,
+                  scratchpadPath: wp!,
                   projectRoot: process.cwd(),
                 })
               },
@@ -1352,6 +1362,7 @@ function AppInner({
             pushForkOverlay={pushForkOverlay}
             roleProfiles={roleProfiles}
             subscribeForkCompaction={subscribeForkCompaction}
+            subscribeForkWindow={subscribeForkWindow}
             selectedFileOpen={isFilePanelOpen}
             onCloseFilePanel={closeFilePanel}
             onApprove={handleApprove}

@@ -3,7 +3,7 @@ import type { DeepPaths } from './streaming-partial'
 export type ToolResult<TOutput = unknown> =
   | { readonly _tag: 'Success'; readonly output: TOutput; readonly query: string | null }
   | { readonly _tag: 'Error'; readonly error: string }
-  | { readonly _tag: 'Rejected'; readonly rejection: unknown }
+  | { readonly _tag: 'Denied'; readonly denial: unknown }
   | { readonly _tag: 'Interrupted' }
 
 export type ToolStateEvent<TInput = unknown, TOutput = unknown, TEmission = unknown> =

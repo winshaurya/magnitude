@@ -1,9 +1,8 @@
-import { BrowserSetupOverlay } from './browser-setup-overlay'
 import { RecentChatsOverlay } from './recent-chats-overlay'
 import { ForkDetailOverlay } from './fork-detail-overlay'
 import { SettingsOverlay } from './settings-overlay'
 import { UsageOverlay } from './usage-overlay'
-import type { AgentStatusState } from '@magnitudedev/agent'
+import type { AgentStatusState, ActionId } from '@magnitudedev/agent'
 import type { RecentChat } from '../data/recent-chats'
 import type { MagnitudeAuthState } from '../hooks/use-magnitude-auth'
 import { createCodingAgentClient } from '@magnitudedev/agent'
@@ -13,9 +12,6 @@ import { BOX_CHARS } from '../utils/ui-constants'
 type AgentClient = Awaited<ReturnType<typeof createCodingAgentClient>>
 
 export type AppOverlaysProps = {
-  showBrowserSetup: boolean
-  setShowBrowserSetup: (v: boolean) => void
-
   settingsVisible: boolean
   onSettingsClose: () => void
   auth: MagnitudeAuthState
@@ -39,17 +35,17 @@ export type AppOverlaysProps = {
   forkContextHardCap: number | null
   popForkOverlay: () => void
   pushForkOverlay: (forkId: string) => void
-  workspacePath: string | null
+  scratchpadPath: string | null
   projectRoot: string
   showCopiedToast: boolean
 
   usageVisible: boolean
   onUsageClose: () => void
+
+  onErrorAction?: (actionId: ActionId) => void
 }
 
 export function AppOverlays({
-  showBrowserSetup,
-  setShowBrowserSetup,
   settingsVisible,
   onSettingsClose,
   auth,
@@ -67,11 +63,12 @@ export function AppOverlays({
   forkContextHardCap,
   popForkOverlay,
   pushForkOverlay,
-  workspacePath,
+  scratchpadPath,
   projectRoot,
   showCopiedToast,
   usageVisible,
   onUsageClose,
+  onErrorAction,
 }: AppOverlaysProps) {
   const theme = useTheme()
 
@@ -101,13 +98,15 @@ export function AppOverlays({
           forkRole={agent?.role ?? 'agent'}
           onClose={popForkOverlay}
           onForkExpand={pushForkOverlay}
+          onErrorAction={onErrorAction}
           modelSummary={forkModelSummary}
           contextHardCap={forkContextHardCap}
-          workspacePath={workspacePath}
+          scratchpadPath={scratchpadPath}
           projectRoot={projectRoot}
           subscribeForkDisplay={(fId, cb) => client.state.display.subscribeFork(fId, cb)}
           subscribeForkCompaction={(fId, cb) => client.state.compaction.subscribeFork(fId, cb)}
-          subscribeForkToolState={(fId, cb) => client.state.toolState.subscribeFork(fId, cb)}
+          subscribeForkWindow={(fId, cb) => client.state.memory.subscribeFork(fId, cb)}
+          subscribeForkHarnessState={(fId, cb) => client.state.harnessState.subscribeFork(fId, cb)}
         />
 
         {showCopiedToast && (
@@ -130,17 +129,6 @@ export function AppOverlays({
             </box>
           </box>
         )}
-      </box>
-    )
-  }
-
-  if (showBrowserSetup) {
-    return (
-      <box style={{ flexDirection: 'column', height: '100%' }}>
-        <BrowserSetupOverlay
-          onClose={() => setShowBrowserSetup(false)}
-          onResult={() => setShowBrowserSetup(false)}
-        />
       </box>
     )
   }

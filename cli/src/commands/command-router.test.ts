@@ -11,7 +11,6 @@ function createContext(overrides: Partial<CommandContext> = {}): CommandContext 
     activateSkill: mock(() => {}),
     initProject: mock(() => {}),
     openSettings: mock(() => {}),
-    openBrowserSetup: mock(() => {}),
     openUsage: mock(() => {}),
     ...overrides,
   }

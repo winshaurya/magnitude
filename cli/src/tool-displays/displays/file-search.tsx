@@ -48,20 +48,20 @@ export const fileSearchDisplay = createToolDisplay<FileSearchState>({
             <span style={{ fg: isError ? theme.error : theme.info }}>{isError ? '✗ ' : '/ '}</span>
             {isRunning ? (
               <>
-                <span style={{ fg: theme.foreground }}>{'Searching '}</span>
+                <span style={{ fg: theme.foreground }}>{'Search '}</span>
                 <span style={{ fg: theme.muted }}>{inputSummary || '...'}</span>
                 <ShimmerText text="..." interval={SHIMMER_INTERVAL_MS} primaryColor={theme.secondary} />
               </>
             ) : isError ? (
               <>
-                <span style={{ fg: theme.foreground }}>{'Searched '}</span>
+                <span style={{ fg: theme.foreground }}>{'Search '}</span>
                 <span style={{ fg: theme.muted }}>{inputSummary}</span>
                 <span style={{ fg: theme.error }}>{' · Error'}</span>
                 <span style={{ fg: theme.muted }}>{` (${state.errorDetail || ''})`}</span>
               </>
             ) : (
               <>
-                <span style={{ fg: theme.foreground }}>{'Searched '}</span>
+                <span style={{ fg: theme.foreground }}>{'Search '}</span>
                 <span style={{ fg: theme.muted }}>{inputSummary}</span>
                 {state.matchCount > 0 ? (
                   <>
@@ -98,7 +98,6 @@ export const fileSearchDisplay = createToolDisplay<FileSearchState>({
   summary: (state) => {
     const summary = summarizeInputs(state);
     const target = summary.length > 0 ? summary : 'files';
-    if (state.phase === 'streaming' || state.phase === 'executing') return `Searching ${target}`;
-    return `Searched ${target}`;
+    return `Search ${target}`;
   },
 });

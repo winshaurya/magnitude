@@ -14,9 +14,9 @@ import {
   type ResolvedContextLimitPolicy,
   type StorageClient,
 } from '@magnitudedev/storage'
-import type { ModelOverrides } from '@magnitudedev/roles'
 
 import { ROLE_IDS, type RoleId } from '../agents/role-validation'
+import { OUTPUT_TOKEN_RESERVE } from '../constants'
 
 export interface RoleConfig {
   readonly modelId: string
@@ -42,17 +42,14 @@ export function getRoleConfig(state: ConfigState, roleId: RoleId): RoleConfig {
 
 export function buildConfigState(
   catalogModels: readonly MagnitudeModelInfo[] | null,
-  overrides: ModelOverrides | undefined,
   policy: ResolvedContextLimitPolicy,
 ): ConfigState {
   const byRole = {} as Record<RoleId, RoleConfig>
   for (const roleId of ROLE_IDS) {
-    const override = overrides?.[roleId]
     const catalogEntry = catalogModels?.find(m => m.roles.includes(roleId))
-    const profile = override?.profile
-      ?? (catalogEntry ? toModelProfile(catalogEntry) : FALLBACK_PROFILE)
-    const modelId = override ? override.spec.modelId : `role/${roleId}`
-    const hardCap = profile.contextWindow - profile.maxOutputTokens
+    const profile = catalogEntry ? toModelProfile(catalogEntry) : FALLBACK_PROFILE
+    const modelId = `role/${roleId}`
+    const hardCap = profile.contextWindow - OUTPUT_TOKEN_RESERVE
     const { softCap } = computeContextLimits(hardCap, policy)
     byRole[roleId] = { modelId, profile, hardCap, softCap }
   }
@@ -62,14 +59,11 @@ export function buildConfigState(
 export const ConfigAmbient = Ambient.define<ConfigState, never>({
   name: 'Config',
   initial: Effect.succeed(
-    buildConfigState(null, undefined, DEFAULT_CONTEXT_LIMIT_POLICY),
+    buildConfigState(null, DEFAULT_CONTEXT_LIMIT_POLICY),
   ),
 })
 
-export function publishConfigFromCatalog(
-  storage: StorageClient,
-  overrides?: ModelOverrides,
-) {
+export function publishConfigFromCatalog(storage: StorageClient) {
   return Effect.gen(function* () {
     const client = yield* MagnitudeClient
     const ambientService = yield* AmbientServiceTag
@@ -83,9 +77,11 @@ export function publishConfigFromCatalog(
     )
 
     const policy = yield* Effect.promise(() => storage.config.getContextLimitPolicy())
+    const newState = buildConfigState(models, policy)
+    console.log('[CONFIG-AMBIENT] publishConfigFromCatalog:', JSON.stringify({ policy, leaderSoftCap: newState.byRole.leader?.softCap }))
     yield* ambientService.update(
       ConfigAmbient,
-      buildConfigState(models, overrides, policy),
+      newState,
     )
   })
 }

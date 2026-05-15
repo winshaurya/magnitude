@@ -18,7 +18,7 @@ export class EphemeralSessionContextTag extends Context.Tag('EphemeralSessionCon
 export interface PolicyContext {
   readonly forkId: string | null
   readonly cwd: string
-  readonly workspacePath: string
+  readonly scratchpadPath: string
   readonly activeAgentCount: number
   readonly userMessagePending: boolean
   readonly disableShellSafeguards: boolean

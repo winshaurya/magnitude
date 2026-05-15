@@ -6,7 +6,10 @@
   "bin": {
     "magnitude": "bin/magnitude"
   },
-  "files": ["dist", "bin"],
+  "files": [
+    "dist",
+    "bin"
+  ],
   "scripts": {
     "dev": "bun run scripts/generate-version.ts && bun run src/index.tsx",
     "typecheck": "tsc --noEmit",
@@ -34,7 +37,6 @@
   "devDependencies": {
     "@magnitudedev/agent": "workspace:*",
     "@magnitudedev/logger": "workspace:*",
-    "@magnitudedev/telemetry": "workspace:*",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.2.3",
     "react-dom": "^19.2.4",

@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import type { DisplayMessage } from '@magnitudedev/agent'
+import type { DisplayMessage, ActionId } from '@magnitudedev/agent'
 import { UserMessage } from './user-message'
 import { QueuedUserMessage } from './queued-user-message'
 import { AssistantMessage } from './assistant-message'
@@ -26,6 +26,7 @@ interface MessageViewProps {
   inputHasText?: boolean
   onFileClick?: (path: string, section?: string) => void
   onForkExpand?: (forkId: string) => void
+  onErrorAction?: (actionId: ActionId) => void
 }
 
 export const MessageView = memo(function MessageView({
@@ -43,7 +44,8 @@ export const MessageView = memo(function MessageView({
   onWorkReject,
   inputHasText,
   onFileClick,
-  onForkExpand
+  onForkExpand,
+  onErrorAction,
 }: MessageViewProps) {
   const theme = useTheme()
   // User messages have their own border structure providing left offset
@@ -99,7 +101,7 @@ export const MessageView = memo(function MessageView({
       }
 
       case 'error':
-        return <ErrorMessage message={message.message} timestamp={message.timestamp} cta={message.cta} />
+        return <ErrorMessage message={message.message} timestamp={message.timestamp} cta={message.cta} onAction={onErrorAction} />
 
       case 'fork_activity':
         return (

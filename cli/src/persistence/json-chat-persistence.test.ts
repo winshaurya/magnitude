@@ -26,8 +26,8 @@ function createStorage(seed?: StoredSessionMeta): StorageClient {
         events.push(...nextEvents)
       },
       getEventsPath: () => '/tmp/session-1/events.jsonl',
-      createWorkspace: async () => '/tmp/session-1',
-      getWorkspacePath: () => '/tmp/session-1',
+      createScratchpad: async () => '/tmp/session-1',
+      getScratchpadPath: () => '/tmp/session-1',
     },
   } as any
 }

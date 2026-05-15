@@ -102,18 +102,30 @@ export function defaultClassifyConnectionError(
 ): ConnectionError {
   const body = failure.body
   const lower = body.toLowerCase()
+  const errorObj = getNestedErrorObject(body)
+  const structuredFields = errorObj
+    ? [
+        typeof errorObj.message === "string" ? (errorObj.message as string).toLowerCase() : "",
+        typeof errorObj.code === "string" ? (errorObj.code as string).toLowerCase() : "",
+        typeof errorObj.type === "string" ? (errorObj.type as string).toLowerCase() : "",
+      ].join(" ")
+    : ""
 
-  if (hasPattern(lower, CONTEXT_LIMIT_PATTERNS)) {
+  if ((errorObj && hasPattern(structuredFields, CONTEXT_LIMIT_PATTERNS)) ||
+      (!errorObj && failure.status >= 400 && failure.status < 500 && hasPattern(lower, CONTEXT_LIMIT_PATTERNS))) {
     return new ContextLimitExceeded({ status: failure.status, message: getErrorMessage(body) })
   }
 
-  if (failure.status === 401 || failure.status === 403 || hasPattern(lower, AUTH_SIGNAL_PATTERNS)) {
+  if (failure.status === 401 || failure.status === 403) {
+    return new AuthFailed({ status: failure.status, message: getErrorMessage(body) })
+  }
+  if (errorObj && failure.status >= 400 && failure.status < 500 && hasPattern(structuredFields, AUTH_SIGNAL_PATTERNS)) {
     return new AuthFailed({ status: failure.status, message: getErrorMessage(body) })
   }
 
   if (failure.status === 429) {
     const code = getErrorCode(body)?.toLowerCase()
-    if ((code && hasPattern(code, USAGE_LIMIT_PATTERNS)) || hasPattern(lower, USAGE_LIMIT_PATTERNS)) {
+    if ((code && hasPattern(code, USAGE_LIMIT_PATTERNS)) || (errorObj && hasPattern(structuredFields, USAGE_LIMIT_PATTERNS))) {
       return new UsageLimitExceeded({ status: failure.status, message: getErrorMessage(body) })
     }
 

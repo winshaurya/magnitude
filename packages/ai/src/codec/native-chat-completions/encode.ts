@@ -1,5 +1,6 @@
 import { JSONSchema } from "effect"
 import { Prompt } from "../../prompt/prompt"
+import type { ProviderToolCallId } from "../../prompt/ids"
 import type { ToolDefinition } from "../../tools/tool-definition"
 import type {
   ChatCompletionsRequest,
@@ -32,11 +33,12 @@ function encodeUserContent(message: { readonly parts: readonly ({ readonly _tag:
 
 function encodeAssistantToolCall(toolCall: {
   readonly id: string
+  readonly providerToolCallId: ProviderToolCallId
   readonly name: string
   readonly input: unknown
 }): ChatToolCall {
   return {
-    id: toolCall.id,
+    id: toolCall.providerToolCallId,
     type: "function",
     function: {
       name: toolCall.name,
@@ -46,7 +48,7 @@ function encodeAssistantToolCall(toolCall: {
 }
 
 function encodeAssistantMessage(
-  message: { readonly _tag: "AssistantMessage"; readonly text?: string | null; readonly reasoning?: string | null; readonly toolCalls?: readonly { readonly id: string; readonly name: string; readonly input: unknown }[] },
+  message: { readonly _tag: "AssistantMessage"; readonly text?: string | null; readonly reasoning?: string | null; readonly toolCalls?: readonly { readonly id: string; readonly providerToolCallId: ProviderToolCallId; readonly name: string; readonly input: unknown }[] },
 ): ChatMessage {
   const content = message.text ?? null
   const reasoningContent = message.reasoning ?? null
@@ -91,7 +93,7 @@ function encodeMessage(message: any): ChatMessage {
     case "ToolResultMessage":
       return {
         role: "tool",
-        tool_call_id: message.toolCallId,
+        tool_call_id: message.providerToolCallId,
         content: encodeToolResultContent(message),
       }
     default:

@@ -43,4 +43,19 @@ describe('extractPastedPathCandidates', () => {
     const payload = "   '/Users/me/a.png'   /Users/me/a.png    ''   "
     expect(extractPastedPathCandidates(payload)).toEqual(['/Users/me/a.png'])
   })
+
+  test('unescapes shell-escaped parens and spaces in single path', () => {
+    const payload = '/Users/trg/Downloads/logo\\ \\(1\\)/6/6\\ copy\\ 2.png'
+    expect(extractPastedPathCandidates(payload)).toEqual([
+      '/Users/trg/Downloads/logo (1)/6/6 copy 2.png',
+    ])
+  })
+
+  test('unescapes mixed shell escapes across multiple paths', () => {
+    const payload = "/Users/me/a\\ b.png /Users/me/c\\(1\\).png"
+    expect(extractPastedPathCandidates(payload)).toEqual([
+      '/Users/me/a b.png',
+      '/Users/me/c(1).png',
+    ])
+  })
 })

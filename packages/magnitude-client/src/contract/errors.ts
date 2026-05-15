@@ -18,6 +18,7 @@ export type MagnitudeErrorType =
   | "insufficient_quota"
   | "rate_limit_error"
   | "server_error"
+  | "service_unavailable"
 
 export type MagnitudeErrorCode =
   | "invalid_api_key"
@@ -30,41 +31,19 @@ export type MagnitudeErrorCode =
   | "model_not_found"
   | "model_not_multimodal"
   | "model_not_grammar_compatible"
-  | "subscription_required"
-  | "trial_expired"
-  | "usage_limit_exceeded_five_hour"
-  | "usage_limit_exceeded_weekly"
-  | "usage_limit_exceeded_monthly"
+  | "insufficient_credits"
   | "provider_rate_limited"
   | "internal_server_error"
   | "provider_error"
+  | "upstream_unavailable"
+  | "stream_interrupted"
   | "role_not_found"
+  | "utility_not_found"
 
-export type MagnitudeErrorDetails =
-  | UsageLimitDetails
-  | SubscriptionRequiredDetails
+export type MagnitudeErrorDetails = InsufficientCreditsDetails
 
-export interface UsageLimitDetails {
-  readonly category: "usage_limit_exceeded"
-  readonly plan: "subscription"
-  readonly violatedWindow: BillingWindowName
-  readonly windows: Record<BillingWindowName, BillingWindowBudget>
-  readonly violatedBudget: BillingWindowBudget
-}
-
-export interface SubscriptionRequiredDetails {
-  readonly category: "subscription_required"
-  readonly requiredPlanId: string
-  readonly allowedStatuses: readonly string[]
-}
-
-export type BillingWindowName = "five_hour" | "weekly" | "monthly"
-
-export interface BillingWindowBudget {
-  readonly limitCents: number
-  readonly usedCents: number
-  readonly remainingCents: number
-  readonly windowStart: string
-  readonly windowEnd: string
-  readonly remainingMs: number
+export interface InsufficientCreditsDetails {
+  readonly category: "insufficient_credits"
+  readonly balanceCents: number
+  readonly requiredCents: number
 }

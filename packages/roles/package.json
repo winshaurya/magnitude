@@ -13,6 +13,7 @@
     "@magnitudedev/magnitude-client": "workspace:*",
     "@magnitudedev/ai": "workspace:*",
     "@magnitudedev/shell-classifier": "workspace:*",
+    "@magnitudedev/scratchpad": "workspace:*",
     "effect": "^3.19.6"
   },
   "devDependencies": {

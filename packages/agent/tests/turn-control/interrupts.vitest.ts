@@ -35,7 +35,7 @@ describe('turn control interrupts', () => {
       yield* h.send({ type: 'interrupt', forkId: null })
 
       yield* assertTurnStateAligned(h)
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('completion after interrupt keeps interrupted turnId alignment', () =>
@@ -52,7 +52,7 @@ describe('turn control interrupts', () => {
       expect(started).toBeDefined()
       expect(completed).toBeDefined()
       expect(completed!.turnId).toBe(started!.turnId)
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('interrupt during context-limit blocked phase avoids mismatched future completion', () =>
@@ -66,7 +66,7 @@ describe('turn control interrupts', () => {
       yield* h.send(mkTurnOutcomeEventSuccess({ turnId: 't-int-4', chainId: 'c-int-4' }))
 
       assertNoTurnIdMismatch(eventsForFork(h, null))
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('soft interrupt preserves active turn ID tracking until completion', () =>
@@ -78,7 +78,7 @@ describe('turn control interrupts', () => {
       yield* h.send(mkTurnOutcomeEventSuccess({ forkId: 'fork-soft', turnId: 'soft-1', chainId: 'soft-c' }))
 
       assertNoTurnIdMismatch(eventsForFork(h, 'fork-soft'))
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('fresh user message after interrupted completion starts a new root turn without manual wake', () =>
@@ -107,7 +107,7 @@ describe('turn control interrupts', () => {
 
       expect(activeAgain.turnId).toBe(resumed.turnId)
       expect(activeAgain.triggeredByUser).toBe(true)
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('user message received during interrupt is accepted and does not wedge later root progress', () =>
@@ -140,7 +140,7 @@ describe('turn control interrupts', () => {
       }
 
       expect(root.turnId).toBe(nextTurn.turnId)
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('stale completion from interrupted root turn does not block a later fresh user turn', () =>
@@ -173,7 +173,7 @@ describe('turn control interrupts', () => {
       }
 
       expect(root.turnId).toBe(followUp.turnId)
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 
   it.live('subfork completion still wakes the parent after a root interrupt', () =>
@@ -209,6 +209,6 @@ describe('turn control interrupts', () => {
       )
 
       expect(parentWake.forkId).toBeNull()
-    }).pipe(Effect.provide(TestHarnessLive()))
+    }).pipe(Effect.provide(TestHarnessLive({ workers: { cortex: false } })))
   )
 })
